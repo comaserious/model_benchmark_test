@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmark Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Benchmark Dashboard</h1>
+      <div class="header-actions">
+        <a href="benchmark.html" class="btn-link">Run Benchmark</a>
+        <button id="refreshBtn" class="btn-refresh">Refresh</button>
+      </div>
+    </header>
+
+    <!-- Filters -->
+    <section class="card filter-bar">
+      <div class="filter-group">
+        <label>GPU</label>
+        <select id="filterGpu"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Model</label>
+        <select id="filterModel"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Pod</label>
+        <select id="filterPod"><option value="">All</option></select>
+      </div>
+    </section>
+
+    <!-- Overview Cards -->
+    <section class="overview-grid" id="overviewGrid"></section>
+
+    <!-- GPU Comparison -->
+    <section class="card" id="gpuCompareSection">
+      <h2>GPU Comparison (Avg TPS)</h2>
+      <div class="bar-chart" id="gpuChart"></div>
+    </section>
+
+    <!-- Model Comparison -->
+    <section class="card" id="modelCompareSection">
+      <h2>Model Comparison (Avg TPS)</h2>
+      <div class="bar-chart" id="modelChart"></div>
+    </section>
+
+    <!-- Warm-up Curve -->
+    <section class="card" id="warmupSection">
+      <h2>Warm-up Curve (TPS over Rounds)</h2>
+      <p class="hint">Shows how TPS improves over consecutive rounds per pod</p>
+      <div class="warmup-chart" id="warmupChart"></div>
+    </section>
+
+    <!-- Recent Sessions -->
+    <section class="card">
+      <h2>Recent Sessions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>GPU</th>
+              <th>Model</th>
+              <th>Pod</th>
+              <th>Avg TTFT</th>
+              <th>Avg TPS</th>
+              <th>Avg Total</th>
+            </tr>
+          </thead>
+          <tbody id="sessionsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- All Rounds -->
+    <section class="card">
+      <h2>All Rounds</h2>
+      <p class="hint" id="roundCount"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>GPU</th>
+              <th>Model</th>
+              <th>Pod</th>
+              <th>Round</th>
+              <th>TTFT</th>
+              <th>TPS</th>
+              <th>Tokens</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="roundsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

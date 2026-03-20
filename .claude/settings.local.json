@@ -3,7 +3,15 @@
     "allow": [
       "Bash(pip show:*)",
       "Bash(pip list:*)",
-      "Bash(python -c \"import fastapi, redis, pytest\")"
+      "Bash(python -c \"import fastapi, redis, pytest\")",
+      "Read(//d D:/TEST/**)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest --collect-only)",
+      "Bash(cd /d D:/TEST/runpod_url_selector)",
+      "Bash(pytest --collect-only)",
+      "Bash(pytest --collect-only -q)",
+      "Bash(python -m pytest --version)",
+      "Bash(python:*)"
     ]
   }
 }

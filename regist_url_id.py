@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_LIST: dict[str, dict] = {}
 
-_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_./-]+$")
 
 
 def _validate_inputs(model_name: str, url_id: str) -> None:
@@ -52,6 +52,7 @@ async def register_url(model_name: str, url_id: str, is_on: bool = True) -> bool
         f"runpod:{model_name}",
         mapping={"url_id": url_id, "is_on": "true" if is_on else "false"},
     )
+    await redis.expire(f"runpod:{model_name}", 86400)  # 24시간 TTL
 
     # 4. Update in-memory cache
     MODEL_LIST[model_name] = {"url_id": url_id, "is_on": is_on}
@@ -67,6 +68,19 @@ async def delete_url(model_name: str) -> bool:
     await redis.delete(f"runpod:{model_name}")  # DEL returning 0 is not an error
     del MODEL_LIST[model_name]
     return True
+
+
+async def delete_all_urls() -> int:
+    """Remove all registered URLs. Returns number of deleted entries."""
+    if not MODEL_LIST:
+        return 0
+
+    redis = RedisManager.get_client()
+    keys = [f"runpod:{name}" for name in MODEL_LIST]
+    await redis.delete(*keys)
+    count = len(MODEL_LIST)
+    MODEL_LIST.clear()
+    return count
 
 
 def get_url(model_name: str) -> str | None:
