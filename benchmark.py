@@ -114,7 +114,8 @@ def _append_csv(csv_path: str, row: dict):
         writer.writerow(row)
 
 
-def run_benchmark(url: str, model: str, gpu: str, url_id: str, rounds: int = 3, max_tokens: int = 256):
+def run_benchmark_stream(url: str, model: str, gpu: str, url_id: str, rounds: int = 3, max_tokens: int = 256):
+    """제너레이터: 라운드마다 SSE 이벤트용 dict를 yield한다."""
     prompts = [
         "What is 1+1?",
         "Explain quantum computing in simple terms.",
@@ -125,31 +126,41 @@ def run_benchmark(url: str, model: str, gpu: str, url_id: str, rounds: int = 3, 
     csv_path = _get_csv_path(gpu, model, url_id)
     is_new_pod = not os.path.exists(csv_path)
 
-    print(f"\n{'='*60}")
-    print(f"  vLLM Benchmark")
-    print(f"  URL: {url}")
-    print(f"  GPU: {gpu}")
-    print(f"  Model: {model}")
-    print(f"  Pod: {url_id} ({'NEW' if is_new_pod else 'EXISTING'})")
-    print(f"  Rounds: {rounds}, Max Tokens: {max_tokens}")
-    print(f"{'='*60}\n")
+    # start event
+    yield {
+        "event": "start",
+        "gpu": gpu,
+        "model": model,
+        "url": url,
+        "url_id": url_id,
+        "is_new_pod": is_new_pod,
+        "total_rounds": rounds,
+    }
 
     all_results = []
 
     for r in range(rounds):
         prompt = prompts[r % len(prompts)]
-        print(f"[Round {r+1}/{rounds}] \"{prompt[:50]}...\"")
+
+        # progress event (round 시작)
+        yield {
+            "event": "progress",
+            "current": r + 1,
+            "total": rounds,
+            "status": f"Running round {r + 1}/{rounds}...",
+        }
 
         result = benchmark_streaming(url, model, prompt, max_tokens)
         if result is None:
-            print(f"  -> Failed (no tokens received)\n")
+            yield {
+                "event": "round",
+                "current": r + 1,
+                "total": rounds,
+                "success": False,
+            }
             continue
 
         all_results.append(result)
-        print(f"  TTFT:    {result['ttft_s']:.3f}s")
-        print(f"  TPS:     {result['tps']:.2f} tokens/s")
-        print(f"  Tokens:  {result['total_tokens']}")
-        print(f"  Total:   {result['total_time_s']:.3f}s\n")
 
         _append_csv(csv_path, {
             "timestamp": now,
@@ -163,18 +174,21 @@ def run_benchmark(url: str, model: str, gpu: str, url_id: str, rounds: int = 3, 
             **result,
         })
 
+        # round 완료 event
+        yield {
+            "event": "round",
+            "current": r + 1,
+            "total": rounds,
+            "success": True,
+            **result,
+        }
+
+    # done event
+    summary = None
     if all_results:
         avg_ttft = sum(r["ttft_s"] for r in all_results) / len(all_results)
         avg_tps = sum(r["tps"] for r in all_results) / len(all_results)
         avg_total = sum(r["total_time_s"] for r in all_results) / len(all_results)
-
-        print(f"{'='*60}")
-        print(f"  Summary ({len(all_results)} rounds)")
-        print(f"{'='*60}")
-        print(f"  Avg TTFT:    {avg_ttft:.3f}s")
-        print(f"  Avg TPS:     {avg_tps:.2f} tokens/s")
-        print(f"  Avg Total:   {avg_total:.3f}s")
-        print(f"{'='*60}\n")
 
         _append_csv(csv_path, {
             "timestamp": now,
@@ -191,33 +205,23 @@ def run_benchmark(url: str, model: str, gpu: str, url_id: str, rounds: int = 3, 
             "type": "summary",
         })
 
-        print(f"  Results saved to {csv_path}")
-
-        return {
-            "gpu": gpu,
-            "model": model,
-            "url": url,
-            "url_id": url_id,
-            "is_new_pod": is_new_pod,
-            "rounds": all_results,
-            "summary": {
-                "avg_ttft_s": round(avg_ttft, 3),
-                "avg_tps": round(avg_tps, 2),
-                "avg_total_time_s": round(avg_total, 3),
-                "total_tokens": sum(r["total_tokens"] for r in all_results),
-                "successful_rounds": len(all_results),
-            },
-            "csv_path": csv_path,
+        summary = {
+            "avg_ttft_s": round(avg_ttft, 3),
+            "avg_tps": round(avg_tps, 2),
+            "avg_total_time_s": round(avg_total, 3),
+            "total_tokens": sum(r["total_tokens"] for r in all_results),
+            "successful_rounds": len(all_results),
         }
 
-    return {
+    yield {
+        "event": "done",
         "gpu": gpu,
         "model": model,
         "url": url,
         "url_id": url_id,
         "is_new_pod": is_new_pod,
-        "rounds": [],
-        "summary": None,
+        "rounds": all_results,
+        "summary": summary,
         "csv_path": csv_path,
     }
 

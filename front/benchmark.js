@@ -4,6 +4,10 @@ const form = document.getElementById("benchmarkForm");
 const runBtn = document.getElementById("runBtn");
 const statusCard = document.getElementById("statusCard");
 const statusText = document.getElementById("statusText");
+const progressWrap = document.getElementById("progressWrap");
+const progressFill = document.getElementById("progressFill");
+const progressLabel = document.getElementById("progressLabel");
+const liveRounds = document.getElementById("liveRounds");
 const summaryCard = document.getElementById("summaryCard");
 const summaryInfo = document.getElementById("summaryInfo");
 const summaryMetrics = document.getElementById("summaryMetrics");
@@ -11,7 +15,6 @@ const roundsCard = document.getElementById("roundsCard");
 const roundsBody = document.getElementById("roundsBody");
 const historyList = document.getElementById("historyList");
 
-// Stored history (session only)
 const history = [];
 
 form.addEventListener("submit", async (e) => {
@@ -27,10 +30,15 @@ async function runBenchmark() {
 
   if (!urlId || !gpu) return;
 
-  // UI: loading
+  // Reset UI
   runBtn.disabled = true;
-  statusCard.classList.remove("hidden");
-  statusText.textContent = "Running benchmark...";
+  statusCard.classList.remove("hidden", "error-card");
+  statusText.textContent = "Connecting to pod...";
+  progressWrap.classList.add("hidden");
+  progressFill.style.width = "0%";
+  progressLabel.textContent = "";
+  liveRounds.classList.add("hidden");
+  liveRounds.innerHTML = "";
   summaryCard.classList.add("hidden");
   roundsCard.classList.add("hidden");
 
@@ -51,18 +59,99 @@ async function runBenchmark() {
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
 
-    const data = await res.json();
+    // Read SSE stream
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalData = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = JSON.parse(line.slice(6));
+        handleEvent(data);
+        if (data.event === "done") finalData = data;
+        if (data.event === "error") throw new Error(data.detail);
+      }
+    }
+
+    // Process any remaining buffer
+    if (buffer.startsWith("data: ")) {
+      const data = JSON.parse(buffer.slice(6));
+      handleEvent(data);
+      if (data.event === "done") finalData = data;
+    }
+
     statusCard.classList.add("hidden");
-    renderResults(data);
-    addHistory(data);
+    if (finalData) {
+      renderResults(finalData);
+      addHistory(finalData);
+    }
   } catch (err) {
     statusText.textContent = `Error: ${err.message}`;
     statusCard.classList.remove("hidden");
     statusCard.classList.add("error-card");
-    setTimeout(() => statusCard.classList.remove("error-card"), 3000);
   } finally {
     runBtn.disabled = false;
   }
+}
+
+function handleEvent(data) {
+  switch (data.event) {
+    case "start":
+      statusText.textContent = `Benchmarking ${data.model} on ${data.gpu}`;
+      progressWrap.classList.remove("hidden");
+      liveRounds.classList.remove("hidden");
+      progressLabel.textContent = `0 / ${data.total_rounds}`;
+      break;
+
+    case "progress":
+      statusText.textContent = data.status;
+      break;
+
+    case "round":
+      updateProgress(data.current, data.total);
+      addLiveRound(data);
+      break;
+  }
+}
+
+function updateProgress(current, total) {
+  const pct = (current / total) * 100;
+  progressFill.style.width = `${pct}%`;
+  progressLabel.textContent = `${current} / ${total}`;
+}
+
+function addLiveRound(data) {
+  const div = document.createElement("div");
+  div.className = `live-round${data.success ? "" : " failed"}`;
+
+  if (data.success) {
+    div.innerHTML = `
+      <span class="round-num">Round ${data.current}</span>
+      <div class="round-stats">
+        <span>TTFT <span class="val">${data.ttft_s.toFixed(3)}s</span></span>
+        <span>TPS <span class="val">${data.tps.toFixed(2)}</span></span>
+        <span>Tokens <span class="val">${data.total_tokens}</span></span>
+        <span>Total <span class="val">${data.total_time_s.toFixed(3)}s</span></span>
+      </div>
+    `;
+  } else {
+    div.innerHTML = `
+      <span class="round-num">Round ${data.current}</span>
+      <span>Failed (no tokens)</span>
+    `;
+  }
+
+  liveRounds.appendChild(div);
+  liveRounds.scrollTop = liveRounds.scrollHeight;
 }
 
 function renderResults(data) {
@@ -97,7 +186,6 @@ function renderResults(data) {
     summaryCard.classList.remove("hidden");
   }
 
-  // Rounds table
   roundsBody.innerHTML = "";
   data.rounds.forEach((r, i) => {
     const tr = document.createElement("tr");
@@ -118,7 +206,6 @@ function renderResults(data) {
 
 function addHistory(data) {
   if (!data.summary) return;
-
   history.unshift(data);
   renderHistory();
 }

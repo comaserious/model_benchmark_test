@@ -80,22 +80,30 @@ class BenchmarkRequest(BaseModel):
     rounds: int = 3
     max_tokens: int = 256
 
-from benchmark import run_benchmark, load_all_logs
+from fastapi.responses import StreamingResponse
+from benchmark import run_benchmark_stream, load_all_logs
+import json as _json
+
+def _sse_generator(req: BenchmarkRequest):
+    url = f"https://{req.url_id}-8000.proxy.runpod.net/"
+
+    model_info = requests.get(f"{url}v1/models")
+    if model_info.status_code != 200:
+        yield f"data: {_json.dumps({'event': 'error', 'detail': 'Failed to get model info'})}\n\n"
+        return
+
+    model_name = model_info.json()['data'][0]['id']
+
+    for event in run_benchmark_stream(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens):
+        yield f"data: {_json.dumps(event)}\n\n"
 
 @app.post("/benchmark")
 async def benchmark_endpoint(req: BenchmarkRequest):
-    try:
-        url = f"https://{req.url_id}-8000.proxy.runpod.net/"
-
-        model_info = requests.get(f"{url}v1/models")
-        if model_info.status_code != 200:
-            raise HTTPException(status_code=500, detail="Failed to get model info")
-        
-        model_name = model_info.json()['data'][0]['id']
-        result = run_benchmark(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(
+        _sse_generator(req),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/benchmark/logs")

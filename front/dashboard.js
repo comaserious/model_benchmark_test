@@ -10,8 +10,11 @@ const warmupChart = document.getElementById("warmupChart");
 const sessionsBody = document.getElementById("sessionsBody");
 const roundsBody = document.getElementById("roundsBody");
 const roundCount = document.getElementById("roundCount");
+const roundsPaging = document.getElementById("roundsPaging");
 
 let allData = [];
+let roundsPage = 1;
+const ROUNDS_PER_PAGE = 20;
 
 document.getElementById("refreshBtn").addEventListener("click", fetchData);
 filterGpu.addEventListener("change", onFilterChange);
@@ -218,12 +221,25 @@ function renderSessions(summaries) {
   }
 }
 
-// ---------- Rounds Table ----------
-function renderRounds(rounds) {
-  const sorted = [...rounds].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  roundCount.textContent = `${sorted.length} rounds`;
+// ---------- Rounds Table (paginated) ----------
+let _sortedRounds = [];
 
-  roundsBody.innerHTML = sorted
+function renderRounds(rounds) {
+  _sortedRounds = [...rounds].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  roundCount.textContent = `${_sortedRounds.length} rounds`;
+  roundsPage = 1;
+  renderRoundsPage();
+}
+
+function renderRoundsPage() {
+  const total = _sortedRounds.length;
+  const totalPages = Math.max(1, Math.ceil(total / ROUNDS_PER_PAGE));
+  if (roundsPage > totalPages) roundsPage = totalPages;
+
+  const start = (roundsPage - 1) * ROUNDS_PER_PAGE;
+  const page = _sortedRounds.slice(start, start + ROUNDS_PER_PAGE);
+
+  roundsBody.innerHTML = page
     .map(
       (r) => `
     <tr>
@@ -241,9 +257,38 @@ function renderRounds(rounds) {
     )
     .join("");
 
-  if (sorted.length === 0) {
+  if (total === 0) {
     roundsBody.innerHTML = '<tr><td colspan="9" class="empty-state">No rounds</td></tr>';
   }
+
+  // Paging buttons
+  roundsPaging.innerHTML = "";
+  if (totalPages <= 1) return;
+
+  const prevBtn = document.createElement("button");
+  prevBtn.textContent = "Prev";
+  prevBtn.disabled = roundsPage === 1;
+  prevBtn.addEventListener("click", () => { roundsPage--; renderRoundsPage(); });
+  roundsPaging.appendChild(prevBtn);
+
+  const maxButtons = 7;
+  let startPage = Math.max(1, roundsPage - Math.floor(maxButtons / 2));
+  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  if (endPage - startPage < maxButtons - 1) startPage = Math.max(1, endPage - maxButtons + 1);
+
+  for (let p = startPage; p <= endPage; p++) {
+    const btn = document.createElement("button");
+    btn.textContent = p;
+    if (p === roundsPage) btn.className = "active";
+    btn.addEventListener("click", () => { roundsPage = p; renderRoundsPage(); });
+    roundsPaging.appendChild(btn);
+  }
+
+  const nextBtn = document.createElement("button");
+  nextBtn.textContent = "Next";
+  nextBtn.disabled = roundsPage === totalPages;
+  nextBtn.addEventListener("click", () => { roundsPage++; renderRoundsPage(); });
+  roundsPaging.appendChild(nextBtn);
 }
 
 // ---------- Utility ----------

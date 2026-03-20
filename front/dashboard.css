@@ -311,6 +311,58 @@ tbody tr:hover {
   background: #1c2128;
 }
 
+/* Scrollable table */
+.table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: #161b22;
+  z-index: 1;
+}
+
+/* Paging */
+.paging {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.paging button {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 8px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.paging button:hover {
+  background: #30363d;
+}
+
+.paging button.active {
+  background: #58a6ff;
+  border-color: #58a6ff;
+  color: #0d1117;
+  font-weight: 600;
+}
+
+.paging button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Empty state */
 .empty-state {
   text-align: center;
