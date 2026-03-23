@@ -83,6 +83,41 @@ h2 {
   background: #0d1117;
 }
 
+/* Mode Toggle */
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 14px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 8px 0;
+  background: #0d1117;
+  border: none;
+  color: #8b949e;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.mode-btn + .mode-btn {
+  border-left: 1px solid #30363d;
+}
+
+.mode-btn.active {
+  background: #58a6ff;
+  color: #fff;
+}
+
+.mode-btn:hover:not(.active) {
+  background: #161b22;
+}
+
 button[type="submit"] {
   width: 100%;
   padding: 10px;

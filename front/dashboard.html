@@ -32,32 +32,32 @@
       </div>
     </section>
 
-    <!-- Overview Cards -->
-    <section class="overview-grid" id="overviewGrid"></section>
-
-    <!-- GPU Comparison -->
-    <section class="card" id="gpuCompareSection">
-      <h2>GPU Comparison (Avg TPS)</h2>
-      <div class="bar-chart" id="gpuChart"></div>
+    <!-- GPU x Model Matrix -->
+    <section class="card">
+      <h2>GPU x Model Performance</h2>
+      <p class="hint">Avg TPS (tokens/s) per GPU + Model combination. Green = best, Red = worst.</p>
+      <div class="table-wrap" id="matrixWrap"></div>
     </section>
 
-    <!-- Model Comparison -->
-    <section class="card" id="modelCompareSection">
-      <h2>Model Comparison (Avg TPS)</h2>
-      <div class="bar-chart" id="modelChart"></div>
+    <!-- Cold Start Analysis -->
+    <section class="card">
+      <h2>Cold Start Analysis</h2>
+      <p class="hint">Round 1 TTFT vs stable rounds (Round 3+) TTFT. Shows warm-up penalty per GPU + Model.</p>
+      <div id="coldStartChart"></div>
     </section>
 
-    <!-- Warm-up Curve -->
-    <section class="card" id="warmupSection">
-      <h2>Warm-up Curve (TPS over Rounds)</h2>
-      <p class="hint">Shows how TPS improves over consecutive rounds per pod</p>
-      <div class="warmup-chart" id="warmupChart"></div>
+    <!-- Stability -->
+    <section class="card">
+      <h2>TPS Stability</h2>
+      <p class="hint">TPS range (min ~ max) per GPU + Model. Narrow range = stable performance.</p>
+      <div id="stabilityChart"></div>
     </section>
 
     <!-- Recent Sessions -->
     <section class="card">
       <h2>Recent Sessions</h2>
-      <div class="table-wrap">
+      <p class="hint">Delta shows difference from overall average for that GPU + Model.</p>
+      <div class="table-wrap table-scroll">
         <table>
           <thead>
             <tr>
@@ -67,37 +67,12 @@
               <th>Pod</th>
               <th>Avg TTFT</th>
               <th>Avg TPS</th>
-              <th>Avg Total</th>
+              <th>TPS Delta</th>
             </tr>
           </thead>
           <tbody id="sessionsBody"></tbody>
         </table>
       </div>
-    </section>
-
-    <!-- All Rounds -->
-    <section class="card">
-      <h2>All Rounds</h2>
-      <p class="hint" id="roundCount"></p>
-      <div class="table-wrap table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>GPU</th>
-              <th>Model</th>
-              <th>Pod</th>
-              <th>Round</th>
-              <th>TTFT</th>
-              <th>TPS</th>
-              <th>Tokens</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody id="roundsBody"></tbody>
-        </table>
-      </div>
-      <div class="paging" id="roundsPaging"></div>
     </section>
   </div>
 

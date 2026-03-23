@@ -25,8 +25,8 @@ CSV_FIELDS = [
 ]
 
 
-def benchmark_streaming(url: str, model: str, prompt: str, max_tokens: int = 256):
-    """스트리밍 응답으로 TTFT, TPS 측정"""
+def benchmark_streaming(url: str, model: str, prompt: str, max_tokens: int = 256, headers: dict | None = None):
+    """스트리밍 응답으로 TTFT, TPS 측정. url은 base URL (e.g. https://api.openai.com/)"""
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -34,14 +34,23 @@ def benchmark_streaming(url: str, model: str, prompt: str, max_tokens: int = 256
         "stream": True,
     }
 
+    if "Qwen" in model:
+        payload['chat_template_kwargs'] = {"enable_thinking" : False}
+
+    req_headers = {"Content-Type": "application/json"}
+    if headers:
+        req_headers.update(headers)
+
     start_time = time.perf_counter()
     first_token_time = None
     token_count = 0
     token_times = []
 
+    endpoint = f"{url.rstrip('/')}/v1/chat/completions"
     response = requests.post(
-        f"{url}/v1/chat/completions",
+        endpoint,
         json=payload,
+        headers=req_headers,
         stream=True,
         timeout=300,
     )
@@ -114,12 +123,18 @@ def _append_csv(csv_path: str, row: dict):
         writer.writerow(row)
 
 
-def run_benchmark_stream(url: str, model: str, gpu: str, url_id: str, rounds: int = 3, max_tokens: int = 256):
+def run_benchmark_stream(
+    url: str, model: str, gpu: str, url_id: str,
+    rounds: int = 3, max_tokens: int = 256,
+    headers: dict | None = None,
+):
     """제너레이터: 라운드마다 SSE 이벤트용 dict를 yield한다."""
     prompts = [
-        "What is 1+1?",
-        "Explain quantum computing in simple terms.",
-        "Write a short Python function that sorts a list.",
+        "Explain the difference between TCP and UDP protocols, including when to use each one.",
+        "Write a Python function that finds all prime numbers up to N using the Sieve of Eratosthenes. Include docstring and examples.",
+        "Summarize the key principles of object-oriented programming and provide a real-world analogy for each concept.",
+        "Describe how a neural network learns through backpropagation. Explain it step by step.",
+        "Write a REST API endpoint in FastAPI that handles user registration with input validation and error handling.",
     ]
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -150,7 +165,7 @@ def run_benchmark_stream(url: str, model: str, gpu: str, url_id: str, rounds: in
             "status": f"Running round {r + 1}/{rounds}...",
         }
 
-        result = benchmark_streaming(url, model, prompt, max_tokens)
+        result = benchmark_streaming(url, model, prompt, max_tokens, headers=headers)
         if result is None:
             yield {
                 "event": "round",

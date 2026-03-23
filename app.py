@@ -5,13 +5,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from redis_hanlder import RedisManager
-from regist_url_id import init_model_list, register_url, delete_url, delete_all_urls, get_url
+from regist_url_id import register_url, delete_url, delete_all_urls, get_url
 import requests
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await RedisManager.init()
-    await init_model_list()
     yield
     await RedisManager.close()
 
@@ -68,15 +67,23 @@ async def delete_all_urls_endpoint():
 
 
 @app.get("/get_url")
-def get_url_endpoint(model_name: str):
-    url = get_url(model_name)
+async def get_url_endpoint(model_name: str):
+    url = await get_url(model_name)
     if url is None:
         raise HTTPException(status_code=404, detail="model not registered or offline")
     return {"model_name": model_name, "url": url}
 
 class BenchmarkRequest(BaseModel):
-    url_id: str
-    gpu: str
+    mode: str = "runpod"  # "runpod" or "api"
+    # RunPod mode fields
+    url_id: str | None = None
+    gpu: str | None = None
+    # API mode fields
+    api_base: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+    provider: str | None = None
+    # Common
     rounds: int = 3
     max_tokens: int = 256
 
@@ -85,17 +92,38 @@ from benchmark import run_benchmark_stream, load_all_logs
 import json as _json
 
 def _sse_generator(req: BenchmarkRequest):
-    url = f"https://{req.url_id}-8000.proxy.runpod.net/"
+    if req.mode == "api":
+        # API mode
+        if not req.api_base or not req.api_key or not req.model:
+            yield f"data: {_json.dumps({'event': 'error', 'detail': 'api_base, api_key, model are required for API mode'})}\n\n"
+            return
 
-    model_info = requests.get(f"{url}v1/models")
-    if model_info.status_code != 200:
-        yield f"data: {_json.dumps({'event': 'error', 'detail': 'Failed to get model info'})}\n\n"
-        return
+        provider = req.provider or "API"
+        url_id = provider.lower().replace(" ", "-")
+        headers = {"Authorization": f"Bearer {req.api_key}"}
 
-    model_name = model_info.json()['data'][0]['id']
+        for event in run_benchmark_stream(
+            req.api_base, req.model, provider, url_id,
+            req.rounds, req.max_tokens, headers=headers,
+        ):
+            yield f"data: {_json.dumps(event)}\n\n"
+    else:
+        # RunPod mode
+        if not req.url_id or not req.gpu:
+            yield f"data: {_json.dumps({'event': 'error', 'detail': 'url_id, gpu are required for RunPod mode'})}\n\n"
+            return
 
-    for event in run_benchmark_stream(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens):
-        yield f"data: {_json.dumps(event)}\n\n"
+        url = f"https://{req.url_id}-8000.proxy.runpod.net/"
+
+        model_info = requests.get(f"{url}v1/models")
+        if model_info.status_code != 200:
+            yield f"data: {_json.dumps({'event': 'error', 'detail': 'Failed to get model info'})}\n\n"
+            return
+
+        model_name = model_info.json()['data'][0]['id']
+
+        for event in run_benchmark_stream(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens):
+            yield f"data: {_json.dumps(event)}\n\n"
 
 @app.post("/benchmark")
 async def benchmark_endpoint(req: BenchmarkRequest):

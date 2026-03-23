@@ -11,7 +11,8 @@
       "Bash(pytest --collect-only)",
       "Bash(pytest --collect-only -q)",
       "Bash(python -m pytest --version)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(find D:TESTrunpod_url_selectorbenchmark_logs -name *.csv)"
     ]
   }
 }

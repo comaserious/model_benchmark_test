@@ -14,26 +14,66 @@
     <section class="card form-card">
       <h2>Benchmark Settings</h2>
       <form id="benchmarkForm">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="urlId">URL ID</label>
-            <input type="text" id="urlId" placeholder="e.g. abc123def" required>
-          </div>
-          <div class="form-group">
-            <label for="gpu">GPU</label>
-            <select id="gpu" required>
-              <option value="">Select GPU</option>
-              <option value="A100">A100</option>
-              <option value="H100">H100</option>
-              <option value="A40">A40</option>
-              <option value="L40">L40</option>
-              <option value="L40S">L40S</option>
-              <option value="RTX5090">RTX 5090</option>
-              <option value="RTX4090">RTX 4090</option>
-              <option value="RTX3090">RTX 3090</option>
-            </select>
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="runpod">RunPod</button>
+          <button type="button" class="mode-btn" data-mode="api">API</button>
+        </div>
+        <input type="hidden" id="mode" value="runpod">
+
+        <!-- RunPod Fields -->
+        <div id="runpodFields">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="urlId">URL ID</label>
+              <input type="text" id="urlId" placeholder="e.g. abc123def">
+            </div>
+            <div class="form-group">
+              <label for="gpu">GPU</label>
+              <select id="gpu">
+                <option value="">Select GPU</option>
+                <option value="A100">A100</option>
+                <option value="H100">H100</option>
+                <option value="A40">A40</option>
+                <option value="L40">L40</option>
+                <option value="L40S">L40S</option>
+                <option value="RTX5090">RTX 5090</option>
+                <option value="RTX4090">RTX 4090</option>
+                <option value="RTX3090">RTX 3090</option>
+              </select>
+            </div>
           </div>
         </div>
+
+        <!-- API Fields -->
+        <div id="apiFields" class="hidden">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="provider">Provider</label>
+              <select id="provider">
+                <option value="OpenAI">OpenAI</option>
+                <option value="Google">Google</option>
+                <option value="Custom">Custom</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="apiModel">Model</label>
+              <input type="text" id="apiModel" placeholder="e.g. gpt-4.1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="apiBase">API Base URL</label>
+              <input type="text" id="apiBase" placeholder="https://api.openai.com">
+            </div>
+            <div class="form-group">
+              <label for="apiKey">API Key</label>
+              <input type="password" id="apiKey" placeholder="sk-...">
+            </div>
+          </div>
+        </div>
+
+        <!-- Common Fields -->
         <div class="form-row">
           <div class="form-group">
             <label for="rounds">Rounds</label>
@@ -90,7 +130,7 @@
     <!-- History -->
     <section class="card history-card">
       <h2>History</h2>
-      <p class="history-hint">Benchmark results are saved to CSV files organized by GPU and model.</p>
+      <p class="history-hint">Benchmark results are saved to CSV files organized by GPU/Provider and model.</p>
       <div id="historyList"></div>
     </section>
   </div>

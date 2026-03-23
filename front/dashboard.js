@@ -3,18 +3,12 @@ const API_BASE = "http://localhost:8000";
 const filterGpu = document.getElementById("filterGpu");
 const filterModel = document.getElementById("filterModel");
 const filterPod = document.getElementById("filterPod");
-const overviewGrid = document.getElementById("overviewGrid");
-const gpuChart = document.getElementById("gpuChart");
-const modelChart = document.getElementById("modelChart");
-const warmupChart = document.getElementById("warmupChart");
+const matrixWrap = document.getElementById("matrixWrap");
+const coldStartChart = document.getElementById("coldStartChart");
+const stabilityChart = document.getElementById("stabilityChart");
 const sessionsBody = document.getElementById("sessionsBody");
-const roundsBody = document.getElementById("roundsBody");
-const roundCount = document.getElementById("roundCount");
-const roundsPaging = document.getElementById("roundsPaging");
 
 let allData = [];
-let roundsPage = 1;
-const ROUNDS_PER_PAGE = 20;
 
 document.getElementById("refreshBtn").addEventListener("click", fetchData);
 filterGpu.addEventListener("change", onFilterChange);
@@ -30,7 +24,7 @@ async function fetchData() {
     populateFilters();
     render();
   } catch (err) {
-    overviewGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">Failed to load data: ${err.message}</div>`;
+    matrixWrap.innerHTML = `<div class="empty-state">Failed to load: ${err.message}</div>`;
   }
 }
 
@@ -38,7 +32,6 @@ function populateFilters() {
   const gpus = [...new Set(allData.map((r) => r.gpu))].sort();
   const models = [...new Set(allData.map((r) => r.model))].sort();
   const pods = [...new Set(allData.map((r) => r.url_id))].sort();
-
   setOptions(filterGpu, gpus);
   setOptions(filterModel, models);
   setOptions(filterPod, pods);
@@ -56,9 +49,7 @@ function setOptions(select, values) {
   if (values.includes(current)) select.value = current;
 }
 
-function onFilterChange() {
-  render();
-}
+function onFilterChange() { render(); }
 
 function getFiltered() {
   return allData.filter((r) => {
@@ -74,224 +65,255 @@ function render() {
   const rounds = data.filter((r) => r.type === "round");
   const summaries = data.filter((r) => r.type === "summary");
 
-  renderOverview(rounds, summaries);
-  renderGpuChart(rounds);
-  renderModelChart(rounds);
-  renderWarmup(rounds);
-  renderSessions(summaries);
-  renderRounds(rounds);
+  renderMatrix(rounds);
+  renderColdStart(rounds);
+  renderStability(rounds);
+  renderSessions(summaries, rounds);
 }
 
-// ---------- Overview ----------
-function renderOverview(rounds, summaries) {
+// ===== GPU x Model Matrix =====
+function renderMatrix(rounds) {
   if (rounds.length === 0) {
-    overviewGrid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">No benchmark data yet. Run a benchmark first.</div>';
+    matrixWrap.innerHTML = '<div class="empty-state">No benchmark data yet.</div>';
     return;
   }
 
-  const totalRounds = rounds.length;
-  const totalSessions = summaries.length;
-  const avgTps = (rounds.reduce((s, r) => s + r.tps, 0) / totalRounds).toFixed(2);
-  const avgTtft = (rounds.reduce((s, r) => s + r.ttft_s, 0) / totalRounds).toFixed(3);
+  const gpus = [...new Set(rounds.map((r) => r.gpu))].sort();
+  const models = [...new Set(rounds.map((r) => r.model))].sort();
 
-  overviewGrid.innerHTML = `
-    <div class="overview-card blue">
-      <div class="value">${totalSessions}</div>
-      <div class="label">Sessions</div>
-    </div>
-    <div class="overview-card purple">
-      <div class="value">${totalRounds}</div>
-      <div class="label">Total Rounds</div>
-    </div>
-    <div class="overview-card green">
-      <div class="value">${avgTps}</div>
-      <div class="label">Avg TPS</div>
-    </div>
-    <div class="overview-card yellow">
-      <div class="value">${avgTtft}s</div>
-      <div class="label">Avg TTFT</div>
-    </div>
-  `;
+  // Build stats per gpu+model
+  const stats = {};
+  rounds.forEach((r) => {
+    const key = `${r.gpu}|${r.model}`;
+    if (!stats[key]) stats[key] = { tpsSum: 0, ttftSum: 0, count: 0, sessions: new Set() };
+    stats[key].tpsSum += r.tps;
+    stats[key].ttftSum += r.ttft_s;
+    stats[key].count++;
+    stats[key].sessions.add(r.timestamp);
+  });
+
+  // Calculate averages
+  const cells = {};
+  let allTps = [];
+  Object.entries(stats).forEach(([key, s]) => {
+    const avgTps = s.tpsSum / s.count;
+    const avgTtft = s.ttftSum / s.count;
+    cells[key] = { avgTps, avgTtft, count: s.count, sessions: s.sessions.size };
+    allTps.push(avgTps);
+  });
+
+  const maxTps = Math.max(...allTps);
+  const minTps = Math.min(...allTps);
+
+  // Determine cell class
+  Object.values(cells).forEach((c) => {
+    if (allTps.length <= 1) {
+      c.cls = "only";
+    } else if (c.avgTps === maxTps) {
+      c.cls = "best";
+    } else if (c.avgTps === minTps) {
+      c.cls = "worst";
+    } else {
+      c.cls = "mid";
+    }
+  });
+
+  let html = '<table class="matrix-table"><thead><tr><th></th>';
+  models.forEach((m) => { html += `<th>${m}</th>`; });
+  html += "</tr></thead><tbody>";
+
+  gpus.forEach((gpu) => {
+    html += `<tr><th>${gpu}</th>`;
+    models.forEach((model) => {
+      const key = `${gpu}|${model}`;
+      const c = cells[key];
+      if (c) {
+        html += `<td class="matrix-cell ${c.cls}">
+          <div class="tps">${c.avgTps.toFixed(2)}</div>
+          <div class="ttft">TTFT ${c.avgTtft.toFixed(3)}s</div>
+          <div class="sessions">${c.sessions} sessions / ${c.count} rounds</div>
+        </td>`;
+      } else {
+        html += '<td class="matrix-cell empty">-</td>';
+      }
+    });
+    html += "</tr>";
+  });
+
+  html += "</tbody></table>";
+  matrixWrap.innerHTML = html;
 }
 
-// ---------- GPU Comparison ----------
-function renderGpuChart(rounds) {
-  const byGpu = groupBy(rounds, "gpu");
-  const entries = Object.entries(byGpu).map(([gpu, rows]) => ({
-    label: gpu,
-    value: rows.reduce((s, r) => s + r.tps, 0) / rows.length,
-  }));
-  entries.sort((a, b) => b.value - a.value);
-  renderBarChart(gpuChart, entries, "blue");
-}
+// ===== Cold Start Analysis =====
+function renderColdStart(rounds) {
+  // Group by gpu+model
+  const groups = groupBy(rounds, (r) => `${r.gpu}|${r.model}`);
+  const items = Object.entries(groups).map(([key, rows]) => {
+    const [gpu, model] = key.split("|");
+    const round1 = rows.filter((r) => r.round === 1 || r.round === "1");
+    const stable = rows.filter((r) => {
+      const n = parseInt(r.round);
+      return !isNaN(n) && n >= 3;
+    });
 
-// ---------- Model Comparison ----------
-function renderModelChart(rounds) {
-  const byModel = groupBy(rounds, "model");
-  const entries = Object.entries(byModel).map(([model, rows]) => ({
-    label: model,
-    value: rows.reduce((s, r) => s + r.tps, 0) / rows.length,
-  }));
-  entries.sort((a, b) => b.value - a.value);
-  renderBarChart(modelChart, entries, "green");
-}
+    const r1Ttft = round1.length > 0 ? round1.reduce((s, r) => s + r.ttft_s, 0) / round1.length : 0;
+    const stableTtft = stable.length > 0 ? stable.reduce((s, r) => s + r.ttft_s, 0) / stable.length : 0;
 
-function renderBarChart(container, entries, color) {
-  if (entries.length === 0) {
-    container.innerHTML = '<div class="empty-state">No data</div>';
+    // Per-round average TTFT for flow chart
+    const byRound = {};
+    rows.forEach((r) => {
+      const n = parseInt(r.round);
+      if (isNaN(n)) return;
+      if (!byRound[n]) byRound[n] = { sum: 0, count: 0 };
+      byRound[n].sum += r.ttft_s;
+      byRound[n].count++;
+    });
+    const roundAvgs = Object.entries(byRound)
+      .map(([rn, d]) => ({ round: parseInt(rn), ttft: d.sum / d.count }))
+      .sort((a, b) => a.round - b.round);
+
+    return { gpu, model, r1Ttft, stableTtft, roundAvgs };
+  });
+
+  if (items.length === 0) {
+    coldStartChart.innerHTML = '<div class="empty-state">No data</div>';
     return;
   }
-  const max = Math.max(...entries.map((e) => e.value), 1);
-  container.innerHTML = entries
-    .map(
-      (e) => `
-    <div class="bar-row">
-      <span class="bar-label" title="${e.label}">${e.label}</span>
-      <div class="bar-track">
-        <div class="bar-fill ${color}" style="width:${(e.value / max) * 100}%"></div>
-      </div>
-      <span class="bar-value">${e.value.toFixed(2)} t/s</span>
-    </div>
-  `
-    )
-    .join("");
-}
 
-// ---------- Warm-up Curve ----------
-function renderWarmup(rounds) {
-  // Group by gpu+model+url_id+timestamp (one session)
-  const sessions = groupBy(rounds, (r) => `${r.gpu}|${r.model}|${r.url_id}|${r.timestamp}`);
-  const sessionList = Object.entries(sessions)
-    .map(([key, rows]) => {
-      const [gpu, model, url_id] = key.split("|");
-      return { gpu, model, url_id, timestamp: rows[0].timestamp, rows };
-    })
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-    .slice(0, 10); // last 10 sessions
+  const maxTtft = Math.max(...items.flatMap((i) => i.roundAvgs.map((r) => r.ttft)), 0.1);
 
-  if (sessionList.length === 0) {
-    warmupChart.innerHTML = '<div class="empty-state">No data</div>';
-    return;
-  }
+  coldStartChart.innerHTML = '<div class="cold-start-list">' + items.map((item) => {
+    const barMax = Math.max(item.r1Ttft, item.stableTtft, 0.01);
+    const improvement = item.r1Ttft > 0 ? ((item.r1Ttft - item.stableTtft) / item.r1Ttft * 100) : 0;
+    const pctClass = improvement > 0 ? "good" : improvement < 0 ? "bad" : "";
 
-  const globalMax = Math.max(...rounds.map((r) => r.tps), 1);
+    // TTFT flow bars
+    const flowBars = item.roundAvgs.map((r) => {
+      const pct = (r.ttft / maxTtft) * 100;
+      const hue = Math.max(0, Math.min(120, (1 - r.ttft / maxTtft) * 120));
+      return `<div class="ttft-bar" style="height:${Math.max(pct, 5)}%;background:hsl(${hue},60%,45%)" data-tip="R${r.round}: ${r.ttft.toFixed(3)}s"></div>`;
+    }).join("");
 
-  warmupChart.innerHTML = sessionList
-    .map((s) => {
-      const bars = s.rows
-        .map(
-          (r, i) =>
-            `<div class="warmup-bar" style="height:${(r.tps / globalMax) * 100}%" data-tip="R${i + 1}: ${r.tps.toFixed(2)} t/s"></div>`
-        )
-        .join("");
-      return `
-      <div class="warmup-pod">
-        <div class="warmup-pod-header">
-          <strong>${s.gpu}</strong> / ${s.model} / ${s.url_id} <span style="color:#484f58">${s.timestamp}</span>
+    return `
+      <div class="cold-start-item">
+        <div class="cold-start-header"><strong>${item.gpu}</strong> / ${item.model}</div>
+        <div class="cold-start-bars">
+          <div class="cold-bar-group">
+            <div class="cold-bar-label">Round 1 TTFT</div>
+            <div class="cold-bar-track">
+              <div class="cold-bar-fill round1" style="width:${(item.r1Ttft / barMax) * 100}%">${item.r1Ttft.toFixed(3)}s</div>
+            </div>
+          </div>
+          <div class="cold-bar-group">
+            <div class="cold-bar-label">Stable (R3+) TTFT</div>
+            <div class="cold-bar-track">
+              <div class="cold-bar-fill stable" style="width:${(item.stableTtft / barMax) * 100}%">${item.stableTtft.toFixed(3)}s</div>
+            </div>
+          </div>
         </div>
-        <div class="warmup-dots">${bars}</div>
+        <div class="cold-start-ttft-flow">${flowBars}</div>
+        <div class="cold-start-improvement">
+          Warm-up improvement: <span class="pct ${pctClass}">${improvement > 0 ? "-" : "+"}${Math.abs(improvement).toFixed(1)}%</span>
+          TTFT after stabilization
+        </div>
       </div>
     `;
-    })
-    .join("");
+  }).join("") + "</div>";
 }
 
-// ---------- Sessions Table ----------
-function renderSessions(summaries) {
-  const sorted = [...summaries].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+// ===== TPS Stability =====
+function renderStability(rounds) {
+  const groups = groupBy(rounds, (r) => `${r.gpu}|${r.model}`);
+  const items = Object.entries(groups).map(([key, rows]) => {
+    const [gpu, model] = key.split("|");
+    const tpsValues = rows.map((r) => r.tps);
+    const min = Math.min(...tpsValues);
+    const max = Math.max(...tpsValues);
+    const avg = tpsValues.reduce((s, v) => s + v, 0) / tpsValues.length;
+    const spread = max - min;
+    return { gpu, model, min, max, avg, spread };
+  });
 
-  sessionsBody.innerHTML = sorted
-    .map(
-      (r) => `
-    <tr>
-      <td>${r.timestamp}</td>
-      <td>${r.gpu}</td>
-      <td>${r.model}</td>
-      <td>${r.url_id}</td>
-      <td>${r.ttft_s.toFixed(3)}s</td>
-      <td>${r.tps.toFixed(2)}</td>
-      <td>${r.total_time_s.toFixed(3)}s</td>
-    </tr>
-  `
-    )
-    .join("");
+  if (items.length === 0) {
+    stabilityChart.innerHTML = '<div class="empty-state">No data</div>';
+    return;
+  }
+
+  items.sort((a, b) => a.spread - b.spread); // most stable first
+
+  const globalMin = Math.min(...items.map((i) => i.min)) * 0.95;
+  const globalMax = Math.max(...items.map((i) => i.max)) * 1.05;
+  const range = globalMax - globalMin;
+
+  stabilityChart.innerHTML = '<div class="stability-list">' + items.map((item) => {
+    const leftPct = ((item.min - globalMin) / range) * 100;
+    const widthPct = ((item.max - item.min) / range) * 100;
+    const avgPct = ((item.avg - globalMin) / range) * 100;
+
+    return `
+      <div class="stability-row">
+        <span class="stability-label" title="${item.gpu} / ${item.model}">${item.gpu} / ${item.model}</span>
+        <div class="stability-track">
+          <div class="stability-range" style="left:${leftPct}%;width:${Math.max(widthPct, 0.5)}%"></div>
+          <div class="stability-avg" style="left:${avgPct}%"></div>
+        </div>
+        <span class="stability-values">
+          ${item.min.toFixed(1)} ~ ${item.max.toFixed(1)}
+          (avg <span class="avg-val">${item.avg.toFixed(2)}</span>,
+          spread ${item.spread.toFixed(2)})
+        </span>
+      </div>
+    `;
+  }).join("") + "</div>";
+}
+
+// ===== Recent Sessions =====
+function renderSessions(summaries, rounds) {
+  // Compute overall avg TPS per gpu+model from rounds
+  const gpuModelAvg = {};
+  const groups = groupBy(rounds, (r) => `${r.gpu}|${r.model}`);
+  Object.entries(groups).forEach(([key, rows]) => {
+    gpuModelAvg[key] = rows.reduce((s, r) => s + r.tps, 0) / rows.length;
+  });
+
+  const sorted = [...summaries].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   if (sorted.length === 0) {
     sessionsBody.innerHTML = '<tr><td colspan="7" class="empty-state">No sessions</td></tr>';
-  }
-}
-
-// ---------- Rounds Table (paginated) ----------
-let _sortedRounds = [];
-
-function renderRounds(rounds) {
-  _sortedRounds = [...rounds].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  roundCount.textContent = `${_sortedRounds.length} rounds`;
-  roundsPage = 1;
-  renderRoundsPage();
-}
-
-function renderRoundsPage() {
-  const total = _sortedRounds.length;
-  const totalPages = Math.max(1, Math.ceil(total / ROUNDS_PER_PAGE));
-  if (roundsPage > totalPages) roundsPage = totalPages;
-
-  const start = (roundsPage - 1) * ROUNDS_PER_PAGE;
-  const page = _sortedRounds.slice(start, start + ROUNDS_PER_PAGE);
-
-  roundsBody.innerHTML = page
-    .map(
-      (r) => `
-    <tr>
-      <td>${r.timestamp}</td>
-      <td>${r.gpu}</td>
-      <td>${r.model}</td>
-      <td>${r.url_id}</td>
-      <td>${r.round}</td>
-      <td>${r.ttft_s.toFixed(3)}s</td>
-      <td>${r.tps.toFixed(2)}</td>
-      <td>${r.total_tokens}</td>
-      <td>${r.total_time_s.toFixed(3)}s</td>
-    </tr>
-  `
-    )
-    .join("");
-
-  if (total === 0) {
-    roundsBody.innerHTML = '<tr><td colspan="9" class="empty-state">No rounds</td></tr>';
+    return;
   }
 
-  // Paging buttons
-  roundsPaging.innerHTML = "";
-  if (totalPages <= 1) return;
+  sessionsBody.innerHTML = sorted.map((r) => {
+    const key = `${r.gpu}|${r.model}`;
+    const overallAvg = gpuModelAvg[key] || r.tps;
+    const delta = r.tps - overallAvg;
+    let deltaClass, deltaText;
+    if (Math.abs(delta) < 0.5) {
+      deltaClass = "delta-neutral";
+      deltaText = "~0";
+    } else if (delta > 0) {
+      deltaClass = "delta-positive";
+      deltaText = `+${delta.toFixed(2)}`;
+    } else {
+      deltaClass = "delta-negative";
+      deltaText = delta.toFixed(2);
+    }
 
-  const prevBtn = document.createElement("button");
-  prevBtn.textContent = "Prev";
-  prevBtn.disabled = roundsPage === 1;
-  prevBtn.addEventListener("click", () => { roundsPage--; renderRoundsPage(); });
-  roundsPaging.appendChild(prevBtn);
-
-  const maxButtons = 7;
-  let startPage = Math.max(1, roundsPage - Math.floor(maxButtons / 2));
-  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-  if (endPage - startPage < maxButtons - 1) startPage = Math.max(1, endPage - maxButtons + 1);
-
-  for (let p = startPage; p <= endPage; p++) {
-    const btn = document.createElement("button");
-    btn.textContent = p;
-    if (p === roundsPage) btn.className = "active";
-    btn.addEventListener("click", () => { roundsPage = p; renderRoundsPage(); });
-    roundsPaging.appendChild(btn);
-  }
-
-  const nextBtn = document.createElement("button");
-  nextBtn.textContent = "Next";
-  nextBtn.disabled = roundsPage === totalPages;
-  nextBtn.addEventListener("click", () => { roundsPage++; renderRoundsPage(); });
-  roundsPaging.appendChild(nextBtn);
+    return `
+      <tr>
+        <td>${r.timestamp}</td>
+        <td>${r.gpu}</td>
+        <td>${r.model}</td>
+        <td>${r.url_id}</td>
+        <td>${r.ttft_s.toFixed(3)}s</td>
+        <td>${r.tps.toFixed(2)}</td>
+        <td class="${deltaClass}">${deltaText}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
-// ---------- Utility ----------
+// ===== Utility =====
 function groupBy(arr, keyFn) {
   const fn = typeof keyFn === "function" ? keyFn : (r) => r[keyFn];
   const groups = {};

@@ -1,11 +1,16 @@
 import logging
 import re
 
+import redis as sync_redis
 from redis_hanlder import RedisManager
 
-logger = logging.getLogger(__name__)
+_sync_pool = sync_redis.ConnectionPool(
+    host="localhost", port=31200, db=0,
+    decode_responses=True, max_connections=20,
+)
 
-MODEL_LIST: dict[str, dict] = {}
+
+logger = logging.getLogger(__name__)
 
 _MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_./-]+$")
 
@@ -20,72 +25,55 @@ def _validate_inputs(model_name: str, url_id: str) -> None:
         raise ValueError("url_id must not be empty.")
 
 
-async def init_model_list() -> None:
-    """Load all runpod:* Redis hashes into MODEL_LIST at startup."""
-    redis = RedisManager.get_client()
-    keys = await redis.keys("runpod:*")
-    for key in keys:
-        model_name = key.split(":", 1)[1]
-        data = await redis.hgetall(key)
-        if "url_id" not in data or "is_on" not in data:
-            logger.warning("Skipping incomplete Redis key '%s' (missing fields)", key)
-            continue
-        MODEL_LIST[model_name] = {
-            "url_id": data["url_id"],
-            "is_on": data["is_on"] == "true",
-        }
-
-
 async def register_url(model_name: str, url_id: str, is_on: bool = True) -> bool:
     """Register or update a RunPod pod URL. Returns True if changed, False if no-op."""
-    # 1. No-op check FIRST (before validation)
-    existing = MODEL_LIST.get(model_name)
-    if existing and existing["url_id"] == url_id and existing["is_on"] == is_on:
-        return False
-
-    # 2. Validate
     _validate_inputs(model_name, url_id)
 
-    # 3. Write to Redis
     redis = RedisManager.get_client()
-    await redis.hset(
-        f"runpod:{model_name}",
-        mapping={"url_id": url_id, "is_on": "true" if is_on else "false"},
-    )
-    await redis.expire(f"runpod:{model_name}", 86400)  # 24시간 TTL
+    key = f"runpod:{model_name}"
 
-    # 4. Update in-memory cache
-    MODEL_LIST[model_name] = {"url_id": url_id, "is_on": is_on}
+    existing = await redis.hgetall(key)
+    if (
+        existing
+        and existing.get("url_id") == url_id
+        and existing.get("is_on") == ("true" if is_on else "false")
+    ):
+        return False
+
+    await redis.hset(key, mapping={"url_id": url_id, "is_on": "true" if is_on else "false"})
+    await redis.expire(key, 86400)
     return True
 
 
 async def delete_url(model_name: str) -> bool:
     """Remove a RunPod pod URL. Returns True if deleted, False if not registered."""
-    if model_name not in MODEL_LIST:
-        return False
-
     redis = RedisManager.get_client()
-    await redis.delete(f"runpod:{model_name}")  # DEL returning 0 is not an error
-    del MODEL_LIST[model_name]
-    return True
+    deleted = await redis.delete(f"runpod:{model_name}")
+    return deleted > 0
 
 
 async def delete_all_urls() -> int:
     """Remove all registered URLs. Returns number of deleted entries."""
-    if not MODEL_LIST:
-        return 0
-
     redis = RedisManager.get_client()
-    keys = [f"runpod:{name}" for name in MODEL_LIST]
-    await redis.delete(*keys)
-    count = len(MODEL_LIST)
-    MODEL_LIST.clear()
-    return count
+    keys = await redis.keys("runpod:*")
+    if not keys:
+        return 0
+    return await redis.delete(*keys)
 
 
-def get_url(model_name: str) -> str | None:
-    """Return the full URL for a model if registered and online. Sync, memory-only."""
-    entry = MODEL_LIST.get(model_name)
-    if entry and entry["is_on"]:
-        return f"https://{entry['url_id']}.proxy.runpod.net/"
+async def get_url(model_name: str) -> str | None:
+    """Return the full URL for a model if registered and online."""
+    redis = RedisManager.get_client()
+    data = await redis.hgetall(f"runpod:{model_name}")
+    if data and data.get("is_on") == "true":
+        return f"https://{data['url_id']}.proxy.runpod.net/"
+    return None
+
+
+def get_url_sync(model_name: str) -> str | None:
+    """Sync version of get_url. For use in non-async contexts (e.g. __init__)."""
+    r = sync_redis.Redis(connection_pool=_sync_pool)
+    data = r.hgetall(f"runpod:{model_name}")
+    if data and data.get("is_on") == "true":
+        return f"https://{data['url_id']}.proxy.runpod.net/"
     return None

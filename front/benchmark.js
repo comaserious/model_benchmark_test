@@ -2,6 +2,9 @@ const API_BASE = 'http://localhost:8000';
 
 const form = document.getElementById("benchmarkForm");
 const runBtn = document.getElementById("runBtn");
+const modeInput = document.getElementById("mode");
+const runpodFields = document.getElementById("runpodFields");
+const apiFields = document.getElementById("apiFields");
 const statusCard = document.getElementById("statusCard");
 const statusText = document.getElementById("statusText");
 const progressWrap = document.getElementById("progressWrap");
@@ -17,23 +20,65 @@ const historyList = document.getElementById("historyList");
 
 const history = [];
 
+// Mode toggle
+document.querySelectorAll(".mode-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const mode = btn.dataset.mode;
+    modeInput.value = mode;
+    runpodFields.classList.toggle("hidden", mode !== "runpod");
+    apiFields.classList.toggle("hidden", mode !== "api");
+  });
+});
+
+// Provider preset
+document.getElementById("provider").addEventListener("change", (e) => {
+  const presets = {
+    OpenAI: "https://api.openai.com",
+    Google: "https://generativelanguage.googleapis.com",
+    Custom: "",
+  };
+  const base = document.getElementById("apiBase");
+  if (presets[e.target.value] !== undefined) {
+    base.value = presets[e.target.value];
+  }
+});
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   await runBenchmark();
 });
 
 async function runBenchmark() {
-  const urlId = document.getElementById("urlId").value.trim();
-  const gpu = document.getElementById("gpu").value;
+  const mode = modeInput.value;
   const rounds = parseInt(document.getElementById("rounds").value) || 3;
   const maxTokens = parseInt(document.getElementById("maxTokens").value) || 256;
 
-  if (!urlId || !gpu) return;
+  let body = { mode, rounds, max_tokens: maxTokens };
+
+  if (mode === "runpod") {
+    const urlId = document.getElementById("urlId").value.trim();
+    const gpu = document.getElementById("gpu").value;
+    if (!urlId || !gpu) return;
+    body.url_id = urlId;
+    body.gpu = gpu;
+  } else {
+    const provider = document.getElementById("provider").value;
+    const apiModel = document.getElementById("apiModel").value.trim();
+    const apiBase = document.getElementById("apiBase").value.trim();
+    const apiKey = document.getElementById("apiKey").value.trim();
+    if (!apiModel || !apiBase || !apiKey) return;
+    body.provider = provider;
+    body.model = apiModel;
+    body.api_base = apiBase;
+    body.api_key = apiKey;
+  }
 
   // Reset UI
   runBtn.disabled = true;
   statusCard.classList.remove("hidden", "error-card");
-  statusText.textContent = "Connecting to pod...";
+  statusText.textContent = mode === "runpod" ? "Connecting to pod..." : "Connecting to API...";
   progressWrap.classList.add("hidden");
   progressFill.style.width = "0%";
   progressLabel.textContent = "";
@@ -46,12 +91,7 @@ async function runBenchmark() {
     const res = await fetch(`${API_BASE}/benchmark`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url_id: urlId,
-        gpu: gpu,
-        rounds: rounds,
-        max_tokens: maxTokens,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -59,7 +99,6 @@ async function runBenchmark() {
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
 
-    // Read SSE stream
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -71,7 +110,7 @@ async function runBenchmark() {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // keep incomplete line
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
@@ -82,7 +121,6 @@ async function runBenchmark() {
       }
     }
 
-    // Process any remaining buffer
     if (buffer.startsWith("data: ")) {
       const data = JSON.parse(buffer.slice(6));
       handleEvent(data);
@@ -156,8 +194,8 @@ function addLiveRound(data) {
 
 function renderResults(data) {
   const podBadge = data.is_new_pod
-    ? '<span class="summary-tag tag-new">NEW POD</span>'
-    : '<span class="summary-tag tag-existing">EXISTING POD</span>';
+    ? '<span class="summary-tag tag-new">NEW</span>'
+    : '<span class="summary-tag tag-existing">EXISTING</span>';
 
   summaryInfo.innerHTML = `
     <span class="summary-tag"><strong>${data.gpu}</strong></span>
