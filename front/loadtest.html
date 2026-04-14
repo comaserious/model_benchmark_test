@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Load Test</title>
+  <link rel="stylesheet" href="benchmark.css">
+  <link rel="stylesheet" href="loadtest.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="page-nav">
+      <a href="benchmark.html">Single Benchmark</a>
+      <span class="nav-active">Load Test</span>
+    </nav>
+
+    <h1>Load Test</h1>
+
+    <!-- 설정 패널 -->
+    <section class="card form-card">
+      <h2>Test Configuration</h2>
+      <form id="loadTestForm">
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="runpod">RunPod</button>
+          <button type="button" class="mode-btn" data-mode="api">API</button>
+        </div>
+        <input type="hidden" id="mode" value="runpod">
+
+        <div id="runpodFields">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="urlId">URL ID</label>
+              <input type="text" id="urlId" placeholder="e.g. abc123def">
+            </div>
+            <div class="form-group">
+              <label for="gpu">GPU</label>
+              <select id="gpu">
+                <option value="">Select GPU</option>
+                <option value="A100">A100</option>
+                <option value="H100">H100</option>
+                <option value="A40">A40</option>
+                <option value="L40">L40</option>
+                <option value="L40S">L40S</option>
+                <option value="RTX5090">RTX 5090</option>
+                <option value="RTX4090">RTX 4090</option>
+                <option value="RTX3090">RTX 3090</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="apiFields" class="hidden">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="provider">Provider</label>
+              <select id="provider">
+                <option value="OpenAI">OpenAI</option>
+                <option value="Google">Google</option>
+                <option value="Custom">Custom</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="apiModel">Model</label>
+              <input type="text" id="apiModel" placeholder="e.g. gpt-4.1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="apiBase">API Base URL</label>
+              <input type="text" id="apiBase" placeholder="https://api.openai.com">
+            </div>
+            <div class="form-group">
+              <label for="apiKey">API Key</label>
+              <input type="password" id="apiKey" placeholder="sk-...">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>Concurrent Users — Step Preset</label>
+          <div class="step-presets">
+            <button type="button" class="step-btn" data-steps="1,5,10">Quick [1→5→10]</button>
+            <button type="button" class="step-btn active" data-steps="1,3,5,10,20">Standard [1→3→5→10→20]</button>
+            <button type="button" class="step-btn" data-steps="1,5,10,20,50">Deep [1→5→10→20→50]</button>
+            <button type="button" class="step-btn" data-steps="custom">Custom</button>
+          </div>
+        </div>
+        <input type="hidden" id="stepsValue" value="1,3,5,10,20">
+
+        <div id="customStepFields" class="hidden">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="stepStart">Start Users</label>
+              <input type="number" id="stepStart" value="1" min="1">
+            </div>
+            <div class="form-group">
+              <label for="stepEnd">End Users</label>
+              <input type="number" id="stepEnd" value="20" min="1">
+            </div>
+            <div class="form-group">
+              <label for="stepIncrement">Increment</label>
+              <input type="number" id="stepIncrement" value="5" min="1">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="rounds">Rounds per User</label>
+            <input type="number" id="rounds" value="1" min="1" max="5">
+          </div>
+          <div class="form-group">
+            <label for="maxTokens">Max Tokens</label>
+            <input type="number" id="maxTokens" value="256" min="1" max="4096">
+          </div>
+        </div>
+
+        <button type="submit" id="runBtn">Run Load Test</button>
+      </form>
+    </section>
+
+    <!-- 진행 상황 -->
+    <section class="card hidden" id="progressCard">
+      <div class="step-indicator" id="stepIndicator">Step 0 / 0</div>
+      <div class="progress-bar" style="margin:10px 0;">
+        <div class="progress-fill" id="stepProgressFill"></div>
+      </div>
+      <div id="userCards" class="user-cards"></div>
+      <div class="step-summary hidden" id="stepSummary"></div>
+    </section>
+
+    <!-- 결과 차트 -->
+    <section class="card hidden" id="chartsCard">
+      <h2>Results</h2>
+      <div class="chart-grid">
+        <div class="chart-wrap">
+          <h3>TTFT (s) vs Concurrent Users</h3>
+          <canvas id="ttftChart"></canvas>
+        </div>
+        <div class="chart-wrap">
+          <h3>E2E Time (s) vs Concurrent Users</h3>
+          <canvas id="e2eChart"></canvas>
+        </div>
+        <div class="chart-wrap">
+          <h3>TPS vs Concurrent Users</h3>
+          <canvas id="tpsChart"></canvas>
+        </div>
+      </div>
+      <h3 class="section-label">Step Details</h3>
+      <div class="table-wrap">
+        <table id="stepTable">
+          <thead>
+            <tr>
+              <th>Users</th>
+              <th>avg TTFT</th>
+              <th>p95 TTFT</th>
+              <th>max TTFT</th>
+              <th>avg TPS</th>
+              <th>min TPS</th>
+              <th>avg E2E</th>
+              <th>p95 E2E</th>
+              <th>max E2E</th>
+              <th>Success</th>
+            </tr>
+          </thead>
+          <tbody id="stepTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 예산 추천 -->
+    <section class="card" id="budgetCard">
+      <h2>Budget Recommendation</h2>
+      <p class="history-hint">수집된 부하 테스트 데이터를 기반으로 GPU 구매 수량을 추천합니다.</p>
+      <div class="budget-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="targetUsers">목표 동시 사용자 수</label>
+            <input type="number" id="targetUsers" value="20" min="1">
+          </div>
+          <div class="form-group">
+            <label for="maxTtft">허용 최대 TTFT (초)</label>
+            <input type="number" id="maxTtft" value="3" min="0.1" step="0.1">
+          </div>
+          <div class="form-group">
+            <label for="maxE2e">허용 최대 E2E (초)</label>
+            <input type="number" id="maxE2e" value="10" min="0.1" step="0.1">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>모델 구성 선택</label>
+          <div id="modelCheckboxes" class="model-checkboxes">
+            <span class="history-hint">부하 테스트 데이터가 없습니다. 먼저 테스트를 실행하세요.</span>
+          </div>
+        </div>
+        <button type="button" id="calcBudgetBtn" class="calc-btn">Calculate</button>
+      </div>
+      <div id="budgetResult" class="hidden">
+        <h3 class="section-label">Recommendation</h3>
+        <div class="table-wrap">
+          <table id="budgetTable">
+            <thead>
+              <tr>
+                <th>구성</th>
+                <th>GPU</th>
+                <th>수량</th>
+                <th>GPU당 최대 사용자</th>
+                <th>avg TTFT</th>
+                <th>avg E2E</th>
+              </tr>
+            </thead>
+            <tbody id="budgetTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="loadtest.js"></script>
+</body>
+</html>
