@@ -97,7 +97,7 @@ def benchmark_streaming(url: str, model: str, prompt: str, max_tokens: int = 256
         "ttft_s": round(ttft, 3),
         "tps": round(tps, 2),
         "total_tokens": token_count,
-        "total_time_s": round(total_time, 3),
+        "e2e_time_s": round(total_time, 3),
     }
 
 
@@ -186,7 +186,10 @@ def run_benchmark_stream(
             "round": r + 1,
             "prompt": prompt,
             "type": "round",
-            **result,
+            "ttft_s": result["ttft_s"],
+            "tps": result["tps"],
+            "total_tokens": result["total_tokens"],
+            "total_time_s": result["e2e_time_s"],
         })
 
         # round 완료 event
@@ -195,7 +198,10 @@ def run_benchmark_stream(
             "current": r + 1,
             "total": rounds,
             "success": True,
-            **result,
+            "ttft_s": result["ttft_s"],
+            "tps": result["tps"],
+            "total_tokens": result["total_tokens"],
+            "e2e_time_s": result["e2e_time_s"],
         }
 
     # done event
@@ -203,7 +209,7 @@ def run_benchmark_stream(
     if all_results:
         avg_ttft = sum(r["ttft_s"] for r in all_results) / len(all_results)
         avg_tps = sum(r["tps"] for r in all_results) / len(all_results)
-        avg_total = sum(r["total_time_s"] for r in all_results) / len(all_results)
+        avg_total = sum(r["e2e_time_s"] for r in all_results) / len(all_results)
 
         _append_csv(csv_path, {
             "timestamp": now,
@@ -223,7 +229,7 @@ def run_benchmark_stream(
         summary = {
             "avg_ttft_s": round(avg_ttft, 3),
             "avg_tps": round(avg_tps, 2),
-            "avg_total_time_s": round(avg_total, 3),
+            "avg_e2e_time_s": round(avg_total, 3),
             "total_tokens": sum(r["total_tokens"] for r in all_results),
             "successful_rounds": len(all_results),
         }
@@ -259,6 +265,7 @@ def load_all_logs() -> list[dict]:
                             row[key] = float(row[key])
                     if row.get("total_tokens"):
                         row["total_tokens"] = int(row["total_tokens"])
+                    row["e2e_time_s"] = row.get("total_time_s", 0.0)
                     rows.append(row)
     return rows
 

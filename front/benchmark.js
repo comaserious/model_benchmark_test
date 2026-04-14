@@ -178,7 +178,7 @@ function addLiveRound(data) {
         <span>TTFT <span class="val">${data.ttft_s.toFixed(3)}s</span></span>
         <span>TPS <span class="val">${data.tps.toFixed(2)}</span></span>
         <span>Tokens <span class="val">${data.total_tokens}</span></span>
-        <span>Total <span class="val">${data.total_time_s.toFixed(3)}s</span></span>
+        <span>Total <span class="val">${data.e2e_time_s.toFixed(3)}s</span></span>
       </div>
     `;
   } else {
@@ -217,8 +217,8 @@ function renderResults(data) {
         <div class="label">Avg TPS</div>
       </div>
       <div class="metric-box highlight-yellow">
-        <div class="value">${s.avg_total_time_s.toFixed(3)}s</div>
-        <div class="label">Avg Total</div>
+        <div class="value">${s.avg_e2e_time_s.toFixed(3)}s</div>
+        <div class="label">Avg E2E</div>
       </div>
     `;
     summaryCard.classList.remove("hidden");
@@ -232,7 +232,7 @@ function renderResults(data) {
       <td>${r.ttft_s.toFixed(3)}</td>
       <td>${r.tps.toFixed(2)}</td>
       <td>${r.total_tokens}</td>
-      <td>${r.total_time_s.toFixed(3)}</td>
+      <td>${r.e2e_time_s.toFixed(3)}</td>
     `;
     roundsBody.appendChild(tr);
   });
@@ -266,7 +266,7 @@ function renderHistory() {
       <div class="stats">
         <span>TTFT <span class="val">${s.avg_ttft_s.toFixed(3)}s</span></span>
         <span>TPS <span class="val">${s.avg_tps.toFixed(2)}</span></span>
-        <span>Total <span class="val">${s.avg_total_time_s.toFixed(3)}s</span></span>
+        <span>Total <span class="val">${s.avg_e2e_time_s.toFixed(3)}s</span></span>
       </div>
     `;
     historyList.appendChild(div);
