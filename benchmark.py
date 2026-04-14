@@ -265,7 +265,7 @@ def load_all_logs() -> list[dict]:
                             row[key] = float(row[key])
                     if row.get("total_tokens"):
                         row["total_tokens"] = int(row["total_tokens"])
-                    row["e2e_time_s"] = row.get("total_time_s", 0.0)
+                    row["e2e_time_s"] = float(row["total_time_s"]) if row.get("total_time_s") else 0.0
                     rows.append(row)
     return rows
 
