@@ -12,7 +12,11 @@
       "Bash(pytest --collect-only -q)",
       "Bash(python -m pytest --version)",
       "Bash(python:*)",
-      "Bash(find D:TESTrunpod_url_selectorbenchmark_logs -name *.csv)"
+      "Bash(find D:TESTrunpod_url_selectorbenchmark_logs -name *.csv)",
+      "Skill(update-config)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git commit:*)"
     ]
   }
 }
