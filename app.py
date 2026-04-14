@@ -129,12 +129,15 @@ def _sse_generator(req: BenchmarkRequest):
 
         url = f"https://{req.url_id}-8000.proxy.runpod.net/"
 
-        model_info = requests.get(f"{url}v1/models")
+        model_info = requests.get(f"{url}v1/models", timeout=10)
         if model_info.status_code != 200:
             yield f"data: {_json.dumps({'event': 'error', 'detail': 'Failed to get model info'})}\n\n"
             return
-
-        model_name = model_info.json()['data'][0]['id']
+        try:
+            model_name = (model_info.json().get("data") or [])[0]["id"]
+        except (ValueError, KeyError, IndexError) as exc:
+            yield f"data: {_json.dumps({'event': 'error', 'detail': f'Unexpected model info response: {exc}'})}\n\n"
+            return
 
         for event in run_benchmark_stream(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens):
             yield f"data: {_json.dumps(event)}\n\n"
@@ -171,11 +174,15 @@ async def _load_test_sse_generator(req: LoadTestConfig):
             yield f"data: {_json.dumps({'event': 'error', 'detail': 'url_id and gpu are required'})}\n\n"
             return
         url = f"https://{req.url_id}-8000.proxy.runpod.net/"
-        model_info = await asyncio.to_thread(requests.get, f"{url}v1/models")
+        model_info = await asyncio.to_thread(requests.get, f"{url}v1/models", timeout=10)
         if model_info.status_code != 200:
             yield f"data: {_json.dumps({'event': 'error', 'detail': 'Failed to get model info'})}\n\n"
             return
-        model_name = model_info.json()["data"][0]["id"]
+        try:
+            model_name = (model_info.json().get("data") or [])[0]["id"]
+        except (ValueError, KeyError, IndexError) as exc:
+            yield f"data: {_json.dumps({'event': 'error', 'detail': f'Unexpected model info response: {exc}'})}\n\n"
+            return
         async for event in run_load_test_stream(
             url, model_name, req.gpu, req.url_id,
             req.steps, req.rounds, req.max_tokens,
