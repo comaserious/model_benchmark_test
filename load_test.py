@@ -69,9 +69,13 @@ async def _run_user_into_queue(
     max_tokens: int,
     headers: dict | None,
 ) -> None:
-    result = await asyncio.to_thread(
-        benchmark_streaming, url, model, prompt, max_tokens, headers
-    )
+    try:
+        result = await asyncio.to_thread(
+            benchmark_streaming, url, model, prompt, max_tokens, headers
+        )
+    except Exception:
+        result = None
+
     user_result = {
         "user_id": user_id,
         "success": result is not None,
@@ -142,8 +146,6 @@ async def run_load_test_stream(
             result = await queue.get()
             per_user_results.append(result)
             yield {"event": "user_done", "step": step_idx + 1, **result}
-
-        await asyncio.gather(*tasks)
 
         aggregate = _aggregate(per_user_results)
         step_data = {
