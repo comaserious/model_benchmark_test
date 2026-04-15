@@ -60,9 +60,11 @@ async function runBenchmark() {
   if (mode === "runpod") {
     const urlId = document.getElementById("urlId").value.trim();
     const gpu = document.getElementById("gpu").value;
+    const gpuCount = parseInt(document.getElementById("gpuCount").value) || 1;
     if (!urlId || !gpu) return;
     body.url_id = urlId;
     body.gpu = gpu;
+    body.gpu_count = gpuCount;
   } else {
     const provider = document.getElementById("provider").value;
     const apiModel = document.getElementById("apiModel").value.trim();

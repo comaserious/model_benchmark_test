@@ -12,6 +12,7 @@
     <nav class="page-nav">
       <a href="benchmark.html">Single Benchmark</a>
       <span class="nav-active">Load Test</span>
+      <a href="compare.html">Compare</a>
     </nav>
 
     <h1>Load Test</h1>
@@ -45,6 +46,10 @@
                 <option value="RTX4090">RTX 4090</option>
                 <option value="RTX3090">RTX 3090</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label for="gpuCount">GPU 수량</label>
+              <input type="number" id="gpuCount" value="1" min="1" max="16">
             </div>
           </div>
         </div>
@@ -111,7 +116,7 @@
           </div>
           <div class="form-group">
             <label for="maxTokens">Max Tokens</label>
-            <input type="number" id="maxTokens" value="256" min="1" max="4096">
+            <input type="number" id="maxTokens" value="8192" min="1" max="16384">
           </div>
         </div>
 
@@ -165,6 +170,52 @@
           </thead>
           <tbody id="stepTableBody"></tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- 과거 결과 히스토리 -->
+    <section class="card" id="historyCard">
+      <h2>Past Results</h2>
+      <p class="history-hint">저장된 부하 테스트 결과를 클릭하면 차트와 상세 표를 확인할 수 있습니다.</p>
+      <div id="historyList"><span class="history-hint">저장된 결과가 없습니다.</span></div>
+
+      <!-- 선택된 결과 상세 -->
+      <div id="historyDetail" class="hidden" style="margin-top:20px;">
+        <div class="history-detail-header" id="historyDetailTitle"></div>
+        <div class="chart-grid">
+          <div class="chart-wrap">
+            <h3>TTFT (s) vs Concurrent Users</h3>
+            <canvas id="histTtftChart"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <h3>E2E Time (s) vs Concurrent Users</h3>
+            <canvas id="histE2eChart"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <h3>TPS vs Concurrent Users</h3>
+            <canvas id="histTpsChart"></canvas>
+          </div>
+        </div>
+        <h3 class="section-label">Step Details</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Users</th>
+                <th>avg TTFT</th>
+                <th>p95 TTFT</th>
+                <th>max TTFT</th>
+                <th>avg TPS</th>
+                <th>min TPS</th>
+                <th>avg E2E</th>
+                <th>p95 E2E</th>
+                <th>max E2E</th>
+                <th>Success</th>
+              </tr>
+            </thead>
+            <tbody id="histStepTableBody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

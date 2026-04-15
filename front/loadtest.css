@@ -205,6 +205,19 @@
 
 .calc-btn:hover { background: #388bfd; }
 
+/* History */
+#historyTable tr.history-row:hover { background: #161b22; }
+#historyTable tr.history-row.selected { background: #1c2a3a; outline: 1px solid #1f6feb; }
+
+.history-detail-header {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #c9d1d9;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid #21262d;
+  margin-bottom: 16px;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   .step-presets { flex-direction: column; }

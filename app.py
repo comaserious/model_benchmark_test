@@ -79,6 +79,7 @@ class BenchmarkRequest(BaseModel):
     # RunPod mode fields
     url_id: str | None = None
     gpu: str | None = None
+    gpu_count: int = 1
     # API mode fields
     api_base: str | None = None
     api_key: str | None = None
@@ -86,7 +87,7 @@ class BenchmarkRequest(BaseModel):
     provider: str | None = None
     # Common
     rounds: int = 3
-    max_tokens: int = 256
+    max_tokens: int = 8192
 
 from fastapi.responses import StreamingResponse
 from benchmark import run_benchmark_stream, load_all_logs
@@ -97,12 +98,13 @@ class LoadTestConfig(BaseModel):
     mode: str = "runpod"
     url_id: str | None = None
     gpu: str | None = None
+    gpu_count: int = 1
     api_base: str | None = None
     api_key: str | None = None
     model: str | None = None
     provider: str | None = None
     rounds: int = 1
-    max_tokens: int = 256
+    max_tokens: int = 8192
     steps: list[int] = [1, 3, 5, 10, 20]
 
 def _sse_generator(req: BenchmarkRequest):
@@ -118,7 +120,7 @@ def _sse_generator(req: BenchmarkRequest):
 
         for event in run_benchmark_stream(
             req.api_base, req.model, provider, url_id,
-            req.rounds, req.max_tokens, headers=headers,
+            req.rounds, req.max_tokens, gpu_count=1, headers=headers,
         ):
             yield f"data: {_json.dumps(event)}\n\n"
     else:
@@ -139,7 +141,7 @@ def _sse_generator(req: BenchmarkRequest):
             yield f"data: {_json.dumps({'event': 'error', 'detail': f'Unexpected model info response: {exc}'})}\n\n"
             return
 
-        for event in run_benchmark_stream(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens):
+        for event in run_benchmark_stream(url, model_name, req.gpu, req.url_id, req.rounds, req.max_tokens, gpu_count=req.gpu_count):
             yield f"data: {_json.dumps(event)}\n\n"
 
 @app.post("/benchmark")
@@ -166,7 +168,7 @@ async def _load_test_sse_generator(req: LoadTestConfig):
         headers = {"Authorization": f"Bearer {req.api_key}"}
         async for event in run_load_test_stream(
             req.api_base, req.model, provider, url_id,
-            req.steps, req.rounds, req.max_tokens, headers=headers,
+            req.steps, req.rounds, req.max_tokens, gpu_count=1, headers=headers,
         ):
             yield f"data: {_json.dumps(event)}\n\n"
     else:
@@ -185,7 +187,7 @@ async def _load_test_sse_generator(req: LoadTestConfig):
             return
         async for event in run_load_test_stream(
             url, model_name, req.gpu, req.url_id,
-            req.steps, req.rounds, req.max_tokens,
+            req.steps, req.rounds, req.max_tokens, gpu_count=req.gpu_count,
         ):
             yield f"data: {_json.dumps(event)}\n\n"
 

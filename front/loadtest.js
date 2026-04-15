@@ -95,9 +95,11 @@ async function runLoadTest() {
   if (mode === 'runpod') {
     const urlId = document.getElementById('urlId').value.trim();
     const gpu = document.getElementById('gpu').value;
+    const gpuCount = parseInt(document.getElementById('gpuCount').value) || 1;
     if (!urlId || !gpu) { alert('URL ID와 GPU를 입력하세요'); return; }
     body.url_id = urlId;
     body.gpu = gpu;
+    body.gpu_count = gpuCount;
   } else {
     const apiModel = document.getElementById('apiModel').value.trim();
     const apiBase = document.getElementById('apiBase').value.trim();
@@ -303,6 +305,115 @@ function renderCharts(labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsAvg) {
   ], 'Tokens / sec'));
 }
 
+// ── History ──────────────────────────────────────────────────────────────────
+let histTtftChart = null;
+let histE2eChart = null;
+let histTpsChart = null;
+
+function renderHistory(logs) {
+  const el = document.getElementById('historyList');
+  if (!logs || logs.length === 0) {
+    el.innerHTML = '<span class="history-hint">저장된 결과가 없습니다.</span>';
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="table-wrap">
+      <table id="historyTable">
+        <thead>
+          <tr>
+            <th>날짜</th>
+            <th>GPU</th>
+            <th>수량</th>
+            <th>모델</th>
+            <th>Steps</th>
+            <th>최대 사용자</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${logs.map((log, i) => {
+            const m = log.meta;
+            const maxUsers = Math.max(...(log.steps || []).map(s => s.concurrent_users));
+            const date = m.date ? m.date.replace('T', ' ').substring(0, 16) : '—';
+            const gpuCount = m.gpu_count || 1;
+            return `<tr class="history-row" data-idx="${i}" style="cursor:pointer;">
+              <td>${date}</td>
+              <td>${m.gpu}</td>
+              <td>${gpuCount}개</td>
+              <td>${(m.model || '').split('/').pop()}</td>
+              <td>${(m.steps || []).join(' → ')}</td>
+              <td>${maxUsers}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  document.querySelectorAll('.history-row').forEach(row => {
+    row.addEventListener('click', () => {
+      document.querySelectorAll('.history-row').forEach(r => r.classList.remove('selected'));
+      row.classList.add('selected');
+      showHistoryDetail(logs[parseInt(row.dataset.idx)]);
+    });
+  });
+}
+
+function showHistoryDetail(log) {
+  const detail = document.getElementById('historyDetail');
+  const title = document.getElementById('historyDetailTitle');
+  const m = log.meta;
+  const date = m.date ? m.date.replace('T', ' ').substring(0, 16) : '—';
+  title.textContent = `${m.gpu} / ${m.model} — ${date}`;
+  detail.classList.remove('hidden');
+
+  const labels = [], ttftAvg = [], ttftP95 = [], e2eAvg = [], e2eP95 = [], tpsAvg = [];
+  const tbody = document.getElementById('histStepTableBody');
+  tbody.innerHTML = '';
+
+  for (const step of log.steps) {
+    const agg = step.aggregate;
+    labels.push(step.concurrent_users);
+    ttftAvg.push(agg.avg_ttft);
+    ttftP95.push(agg.p95_ttft);
+    e2eAvg.push(agg.avg_e2e);
+    e2eP95.push(agg.p95_e2e);
+    tpsAvg.push(agg.avg_tps);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${step.concurrent_users}</td>
+      <td>${agg.avg_ttft.toFixed(3)}</td>
+      <td>${agg.p95_ttft.toFixed(3)}</td>
+      <td>${agg.max_ttft.toFixed(3)}</td>
+      <td>${agg.avg_tps.toFixed(2)}</td>
+      <td>${agg.min_tps.toFixed(2)}</td>
+      <td>${agg.avg_e2e.toFixed(3)}</td>
+      <td>${agg.p95_e2e.toFixed(3)}</td>
+      <td>${agg.max_e2e.toFixed(3)}</td>
+      <td>${agg.successful}/${agg.total}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  if (histTtftChart) { histTtftChart.destroy(); histTtftChart = null; }
+  if (histE2eChart) { histE2eChart.destroy(); histE2eChart = null; }
+  if (histTpsChart) { histTpsChart.destroy(); histTpsChart = null; }
+
+  const line = { borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false };
+  histTtftChart = new Chart(document.getElementById('histTtftChart'), makeChartConfig(labels, [
+    { label: 'avg TTFT', data: ttftAvg, borderColor: '#58a6ff', pointBackgroundColor: '#58a6ff', ...line },
+    { label: 'p95 TTFT', data: ttftP95, borderColor: '#388bfd', borderDash: [4, 4], pointBackgroundColor: '#388bfd', ...line },
+  ], 'Seconds'));
+  histE2eChart = new Chart(document.getElementById('histE2eChart'), makeChartConfig(labels, [
+    { label: 'avg E2E', data: e2eAvg, borderColor: '#d29922', pointBackgroundColor: '#d29922', ...line },
+    { label: 'p95 E2E', data: e2eP95, borderColor: '#bb8009', borderDash: [4, 4], pointBackgroundColor: '#bb8009', ...line },
+  ], 'Seconds'));
+  histTpsChart = new Chart(document.getElementById('histTpsChart'), makeChartConfig(labels, [
+    { label: 'avg TPS', data: tpsAvg, borderColor: '#3fb950', pointBackgroundColor: '#3fb950', ...line },
+  ], 'Tokens / sec'));
+
+  detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ── Budget Calculator ────────────────────────────────────────────────────────
 let budgetLogs = [];
 
@@ -311,6 +422,7 @@ async function loadBudgetData() {
     const res = await fetch(`${API_BASE}/load-test/logs`);
     if (!res.ok) return;
     budgetLogs = await res.json();
+    renderHistory(budgetLogs);
     renderModelCheckboxes();
   } catch { /* no logs yet */ }
 }
@@ -339,40 +451,48 @@ function renderModelCheckboxes() {
 }
 
 function calcGpuRow(log, targetUsers, maxTtft, maxE2e) {
-  let maxUsersPerGpu = 0;
+  const testGpuCount = log.meta.gpu_count || 1;
+  let maxTotalUsers = 0;  // 테스트 당시 전체 사용자 수 (GPU 여러 개 합산)
   let lastValidAgg = null;
 
   for (const step of log.steps) {
     const agg = step.aggregate;
     if (agg.successful > 0 && agg.avg_ttft <= maxTtft && agg.avg_e2e <= maxE2e) {
-      maxUsersPerGpu = step.concurrent_users;
+      maxTotalUsers = step.concurrent_users;
       lastValidAgg = agg;
     }
   }
 
+  // GPU 1개당 처리 가능 사용자 = 테스트 총 사용자 / 테스트에 사용한 GPU 수
+  const maxUsersPerGpu = maxTotalUsers > 0 ? maxTotalUsers / testGpuCount : 0;
+  const neededGpus = maxUsersPerGpu > 0 ? Math.ceil(targetUsers / maxUsersPerGpu) : null;
+
   return {
     gpu: log.meta.gpu,
+    gpuCount: testGpuCount,
     model: log.meta.model,
-    maxUsersPerGpu,
-    gpuCount: maxUsersPerGpu > 0 ? Math.ceil(targetUsers / maxUsersPerGpu) : null,
+    maxUsersPerGpu: Math.floor(maxUsersPerGpu),
+    neededGpus,
     avgTtft: lastValidAgg ? lastValidAgg.avg_ttft : null,
     avgE2e: lastValidAgg ? lastValidAgg.avg_e2e : null,
   };
 }
 
 function appendBudgetRow(row, label) {
-  const gpuCountCell = row.gpuCount !== null
-    ? `<strong>${row.gpuCount}</strong>`
+  const neededCell = row.neededGpus !== null
+    ? `<strong>${row.neededGpus}</strong>`
     : '<span style="color:#f85149">데이터 부족</span>';
   const ttftCell = row.avgTtft !== null ? `${row.avgTtft.toFixed(3)}s` : '—';
   const e2eCell = row.avgE2e !== null ? `${row.avgE2e.toFixed(3)}s` : '—';
-  const maxUsersCell = row.maxUsersPerGpu > 0 ? row.maxUsersPerGpu : '—';
+  const maxUsersCell = row.maxUsersPerGpu > 0
+    ? `${row.maxUsersPerGpu} <span style="color:#8b949e;font-size:0.8em;">(테스트: ${row.gpuCount}개)</span>`
+    : '—';
 
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td>${label}</td>
     <td>${row.gpu}</td>
-    <td>${gpuCountCell}</td>
+    <td>${neededCell}</td>
     <td>${maxUsersCell}</td>
     <td>${ttftCell}</td>
     <td>${e2eCell}</td>`;
@@ -410,7 +530,7 @@ document.getElementById('calcBudgetBtn').addEventListener('click', () => {
 
   // Multi-model summary row (2+ selected)
   if (rows.length >= 2) {
-    const totalGpus = rows.reduce((s, r) => s + (r.gpuCount ?? 0), 0);
+    const totalGpus = rows.reduce((s, r) => s + (r.neededGpus ?? 0), 0);
     const modelNames = rows.map(r => r.model.split('/').pop()).join(' + ');
     const tr = document.createElement('tr');
     tr.innerHTML = `
