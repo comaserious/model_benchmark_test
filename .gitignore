@@ -3,3 +3,4 @@ benchmark_logs/
 .env
 load_test_logs/
 .claude/
+.impeccable.md

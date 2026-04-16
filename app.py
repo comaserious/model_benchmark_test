@@ -204,3 +204,80 @@ async def load_test_endpoint(req: LoadTestConfig):
 @app.get("/load-test/logs")
 def load_test_logs_endpoint():
     return load_all_load_test_logs()
+
+
+# ── Vision proxy ───────────────────────────────────────────────────
+class VisionConnectRequest(BaseModel):
+    url_id: str
+
+class VisionChatRequest(BaseModel):
+    url_id: str
+    question: str
+    image_data_url: str | None = None   # data:mime;base64,... — optional
+    max_tokens: int = 2048
+
+@app.post("/vision/connect")
+async def vision_connect(req: VisionConnectRequest):
+    base = f"https://{req.url_id}-8000.proxy.runpod.net"
+    try:
+        health = await asyncio.to_thread(requests.get, f"{base}/health", timeout=10)
+        if health.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"health returned {health.status_code}")
+        models = await asyncio.to_thread(requests.get, f"{base}/v1/models", timeout=10)
+        if models.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"models returned {models.status_code}")
+        data = models.json().get("data") or []
+        model_id = data[0]["id"] if data else ""
+        return {"model_id": model_id}
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+def _vision_stream(req: VisionChatRequest):
+    import json as _j
+    base = f"https://{req.url_id}-8000.proxy.runpod.net"
+
+    # Resolve model id
+    try:
+        models_resp = requests.get(f"{base}/v1/models", timeout=10)
+        model_id = (models_resp.json().get("data") or [])[0]["id"]
+    except Exception as e:
+        yield f"data: {_j.dumps({'error': str(e)})}\n\n"
+        return
+
+    content: list = [{"type": "text", "text": req.question}]
+    if req.image_data_url:
+        content.append({"type": "image_url", "image_url": {"url": req.image_data_url}})
+
+    payload = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": content}],
+        "stream": True,
+        "max_tokens": req.max_tokens,
+    }
+
+    try:
+        with requests.post(
+            f"{base}/v1/chat/completions",
+            json=payload,
+            stream=True,
+            timeout=120,
+        ) as resp:
+            if resp.status_code != 200:
+                yield f"data: {_j.dumps({'error': f'HTTP {resp.status_code}'})}\n\n"
+                return
+            for raw in resp.iter_lines():
+                if not raw:
+                    continue
+                line = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+                # Forward SSE lines as-is
+                yield line + "\n\n"
+    except Exception as e:
+        yield f"data: {_j.dumps({'error': str(e)})}\n\n"
+
+@app.post("/vision/chat")
+async def vision_chat(req: VisionChatRequest):
+    return StreamingResponse(
+        _vision_stream(req),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
