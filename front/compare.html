@@ -4,96 +4,121 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Performance Compare</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="benchmark.css">
   <link rel="stylesheet" href="loadtest.css">
   <link rel="stylesheet" href="compare.css">
 </head>
 <body>
   <div class="container">
-    <nav class="page-nav">
-      <a href="benchmark.html">Single Benchmark</a>
-      <a href="loadtest.html">Load Test</a>
-      <span class="nav-active">Compare</span>
-    </nav>
-    <h1>Performance Compare</h1>
 
-    <div class="tab-bar">
-      <button class="tab-btn active" data-tab="select">모델 선택 비교</button>
-      <button class="tab-btn" data-tab="gpu">GPU 비교</button>
-      <button class="tab-btn" data-tab="model">모델 비교</button>
-      <button class="tab-btn" data-tab="summary">전체 요약</button>
+    <header class="page-header">
+      <nav class="page-nav">
+        <a href="benchmark.html">Benchmark</a>
+        <a href="loadtest.html">Load Test</a>
+        <span class="nav-active">Compare</span>
+        <a href="vision.html">Vision</a>
+      </nav>
+      <div class="page-title-block">
+        <h1>Performance Compare</h1>
+        <span class="page-subtitle">vLLM · RunPod GPU 벤치마크 결과 분석</span>
+      </div>
+    </header>
+
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" data-tab="select" role="tab">자유 선택 비교</button>
+      <button class="tab-btn" data-tab="gpu" role="tab">GPU 비교</button>
+      <button class="tab-btn" data-tab="model" role="tab">모델 비교</button>
+      <button class="tab-btn" data-tab="summary" role="tab">전체 요약</button>
     </div>
 
     <!-- Tab 0: 선택 비교 -->
-    <div class="tab-panel" id="tab-select">
+    <div class="tab-panel" id="tab-select" role="tabpanel">
       <section class="card">
-        <h2>비교할 테스트 선택</h2>
-        <p class="history-hint">비교하고 싶은 조합을 선택하세요. GPU가 달라도 자유롭게 선택할 수 있습니다.</p>
+        <div class="card-head">
+          <h2>비교 조합 선택</h2>
+          <p class="card-desc">GPU가 달라도 자유롭게 선택 가능합니다. 2개 이상 선택 후 실행하세요.</p>
+        </div>
         <div id="selectCheckboxes" class="select-combo-list"></div>
         <button id="runSelectCompare" class="calc-btn" style="margin-top:16px;">비교 실행</button>
       </section>
 
       <div id="selectResult" class="hidden">
         <section class="card">
-          <h2>성능 곡선 비교</h2>
+          <div class="card-head">
+            <h2>성능 곡선 비교</h2>
+          </div>
           <div id="selectChartGrid" class="chart-grid"></div>
         </section>
 
         <section class="card">
-          <h2>부하 저하율</h2>
+          <div class="card-head">
+            <h2>부하 저하율</h2>
+            <p class="card-desc">1명 → 최대 동시 사용자 증가에 따른 TTFT 저하 배율</p>
+          </div>
           <div id="selectDegradation"></div>
         </section>
 
         <section class="card">
-          <h2>Step 상세 비교</h2>
-          <p class="history-hint">각 동시 사용자 수 단계에서의 성능 지표입니다.</p>
+          <div class="card-head">
+            <h2>Step별 상세 데이터</h2>
+          </div>
           <div id="selectDetailTables"></div>
         </section>
       </div>
     </div>
 
     <!-- Tab 1: GPU 비교 (모델 고정) -->
-    <div class="tab-panel hidden" id="tab-gpu">
+    <div class="tab-panel hidden" id="tab-gpu" role="tabpanel">
       <section class="card">
         <div class="compare-filter">
-          <label for="gpuCompareModel">모델 선택</label>
+          <label for="gpuCompareModel">모델</label>
           <select id="gpuCompareModel"></select>
         </div>
-        <p class="history-hint">선택한 모델을 테스트한 GPU들의 성능 곡선을 비교합니다.</p>
+        <p class="card-desc" style="margin-bottom:20px;">선택한 모델을 테스트한 GPU들의 성능 곡선을 비교합니다.</p>
         <div id="gpuChartGrid" class="chart-grid"></div>
-        <div id="gpuDegradation"></div>
+        <div id="gpuDegradation" class="degradation-section"></div>
       </section>
     </div>
 
     <!-- Tab 2: 모델 비교 (GPU 고정) -->
-    <div class="tab-panel hidden" id="tab-model">
+    <div class="tab-panel hidden" id="tab-model" role="tabpanel">
       <section class="card">
         <div class="compare-filter">
-          <label for="modelCompareGpu">GPU 선택</label>
+          <label for="modelCompareGpu">GPU</label>
           <select id="modelCompareGpu"></select>
         </div>
-        <p class="history-hint">선택한 GPU에서 테스트한 모델들의 성능 곡선을 비교합니다.</p>
+        <p class="card-desc" style="margin-bottom:20px;">선택한 GPU에서 테스트한 모델들의 성능 곡선을 비교합니다.</p>
         <div id="modelChartGrid" class="chart-grid"></div>
-        <div id="modelDegradation"></div>
+        <div id="modelDegradation" class="degradation-section"></div>
       </section>
     </div>
 
     <!-- Tab 3: 전체 요약 -->
-    <div class="tab-panel hidden" id="tab-summary">
+    <div class="tab-panel hidden" id="tab-summary" role="tabpanel">
       <section class="card">
-        <h2>SLA 기준 성능 한계</h2>
-        <div class="form-row" style="margin-bottom:16px; align-items:flex-end;">
-          <div class="form-group">
-            <label for="slaMaxTtft">허용 최대 TTFT (초)</label>
-            <input type="number" id="slaMaxTtft" value="3" min="0.1" step="0.1">
+        <div class="card-head">
+          <h2>SLA 기준 성능 한계</h2>
+          <p class="card-desc">설정한 임계값 이하를 만족하는 최대 동시 사용자 수. 기준을 변경하면 즉시 재계산됩니다.</p>
+        </div>
+        <div class="sla-controls">
+          <div class="sla-field">
+            <label for="slaMaxTtft">최대 TTFT</label>
+            <div class="sla-input-wrap">
+              <input type="number" id="slaMaxTtft" value="3" min="0.1" step="0.1">
+              <span class="sla-unit">s</span>
+            </div>
           </div>
-          <div class="form-group">
-            <label for="slaMaxE2e">허용 최대 E2E (초)</label>
-            <input type="number" id="slaMaxE2e" value="10" min="0.1" step="0.1">
+          <div class="sla-field">
+            <label for="slaMaxE2e">최대 E2E</label>
+            <div class="sla-input-wrap">
+              <input type="number" id="slaMaxE2e" value="10" min="0.1" step="0.1">
+              <span class="sla-unit">s</span>
+            </div>
           </div>
-          <div class="form-group">
-            <button id="applySlaBtn" class="calc-btn">적용</button>
-          </div>
+          <button id="applySlaBtn" class="calc-btn">적용</button>
         </div>
         <div class="table-wrap">
           <table id="summaryTable">
@@ -102,11 +127,11 @@
                 <th>GPU</th>
                 <th>수량</th>
                 <th>모델</th>
-                <th>GPU당 최대 사용자</th>
+                <th>GPU당 최대</th>
                 <th>avg TTFT</th>
                 <th>avg TPS</th>
                 <th>avg E2E</th>
-                <th>부하 저하율</th>
+                <th>저하율</th>
                 <th>테스트 날짜</th>
               </tr>
             </thead>
@@ -116,17 +141,26 @@
       </section>
 
       <section class="card">
-        <h2>레이더 차트 — 종합 성능 프로필</h2>
-        <p class="history-hint">비교할 조합을 선택하세요 (최대 6개). 모든 축은 높을수록 좋음으로 정규화됩니다.</p>
-        <div id="radarLegend" class="radar-legend">
-          <span class="radar-axis-hint">① TTFT 응답성 &nbsp; ② TPS 처리량 &nbsp; ③ GPU당 최대 사용자 &nbsp; ④ 부하 안정성 &nbsp; ⑤ 응답 일관성</span>
+        <div class="card-head">
+          <h2>종합 성능 프로필</h2>
+          <p class="card-desc">비교할 조합 선택 (최대 6개). 모든 축은 높을수록 좋음으로 정규화됩니다.</p>
         </div>
-        <div id="radarCheckboxes" class="model-checkboxes" style="margin-bottom:16px;"></div>
+        <div id="radarLegend" class="radar-legend">
+          <div id="radarCheckboxes" class="model-checkboxes"></div>
+        </div>
+        <div class="radar-axes-hint">
+          <span>① TTFT 응답성</span>
+          <span>② TPS 처리량</span>
+          <span>③ GPU당 최대 사용자</span>
+          <span>④ 부하 안정성</span>
+          <span>⑤ 응답 일관성</span>
+        </div>
         <div class="radar-wrap">
           <canvas id="radarChart"></canvas>
         </div>
       </section>
     </div>
+
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>

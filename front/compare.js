@@ -1,8 +1,14 @@
 const API_BASE = 'http://localhost:8000';
 
 const PALETTE = [
-  '#58a6ff', '#3fb950', '#d29922', '#f85149',
-  '#bc8cff', '#79c0ff', '#56d364', '#e3b341',
+  '#2563eb',  // blue-600
+  '#16a34a',  // green-600
+  '#d97706',  // amber-600
+  '#9333ea',  // purple-600
+  '#0891b2',  // cyan-700
+  '#7c3aed',  // violet-600
+  '#ea580c',  // orange-600
+  '#059669',  // emerald-600
 ];
 
 let allLogs = [];
@@ -234,30 +240,104 @@ function showEmpty(containerId, msg) {
 }
 
 function chartCfg(labels, datasets, yLabel) {
+  const FONT = "'Barlow Condensed', 'Noto Sans KR', sans-serif";
   return {
     type: 'line',
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 14 } },
+        legend: {
+          labels: {
+            color: '#7a8898',
+            font: { family: FONT, size: 11, weight: '600' },
+            boxWidth: 20,
+            boxHeight: 2,
+            padding: 14,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#1a2233',
+          borderColor: '#2e3d52',
+          borderWidth: 1,
+          titleColor: '#c8d4e0',
+          bodyColor: '#8090a4',
+          titleFont: { family: FONT, size: 12, weight: '700' },
+          bodyFont: { family: FONT, size: 11 },
+          padding: 10,
+          cornerRadius: 4,
+        },
       },
       scales: {
         x: {
-          title: { display: true, text: 'Concurrent Users', color: '#8b949e', font: { size: 11 } },
-          ticks: { color: '#8b949e' },
-          grid: { color: '#21262d' },
+          title: {
+            display: true, text: 'Concurrent Users',
+            color: '#96a2b0', font: { family: FONT, size: 10, weight: '700' },
+          },
+          ticks: { color: '#8090a4', font: { family: FONT, size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          border: { color: 'rgba(0,0,0,0.10)' },
         },
         y: {
-          title: { display: true, text: yLabel, color: '#8b949e', font: { size: 11 } },
-          ticks: { color: '#8b949e' },
-          grid: { color: '#21262d' },
+          title: {
+            display: true, text: yLabel,
+            color: '#96a2b0', font: { family: FONT, size: 10, weight: '700' },
+          },
+          ticks: { color: '#8090a4', font: { family: FONT, size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          border: { color: 'rgba(0,0,0,0.10)' },
           beginAtZero: true,
         },
       },
     },
   };
+}
+
+// ── Chart expand modal ────────────────────────────────────────────────────────
+
+function openChartModal(labels, datasets, title, yLabel) {
+  // Deep-clone datasets so the modal chart is independent
+  const cloned = JSON.parse(JSON.stringify(datasets));
+
+  const modal = document.createElement('div');
+  modal.className = 'chart-modal';
+  modal.innerHTML = `
+    <div class="chart-modal-backdrop"></div>
+    <div class="chart-modal-panel">
+      <div class="chart-modal-header">
+        <span class="chart-modal-title">${title}</span>
+        <button class="chart-modal-close" aria-label="닫기">✕</button>
+      </div>
+      <div class="chart-modal-canvas-wrap">
+        <canvas id="chart-modal-canvas"></canvas>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const cfg = chartCfg(labels, cloned, yLabel);
+  cfg.options.maintainAspectRatio = false;
+  // Slightly larger fonts for the expanded view
+  cfg.options.plugins.legend.labels.font.size = 12;
+  cfg.options.scales.x.ticks.font.size = 12;
+  cfg.options.scales.y.ticks.font.size = 12;
+
+  const modalChart = new Chart(document.getElementById('chart-modal-canvas'), cfg);
+
+  const closeModal = () => {
+    modalChart.destroy();
+    modal.remove();
+    document.removeEventListener('keydown', onKeydown);
+  };
+
+  const onKeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+  modal.querySelector('.chart-modal-backdrop').addEventListener('click', closeModal);
+  modal.querySelector('.chart-modal-close').addEventListener('click', closeModal);
+  document.addEventListener('keydown', onKeydown);
+
+  // Trigger enter animation on next frame
+  requestAnimationFrame(() => modal.classList.add('open'));
 }
 
 // logs 배열 → 3개 차트 렌더링 (공통 x축 = 모든 concurrent_users 합집합)
@@ -276,7 +356,7 @@ function renderThreeCharts(containerId, logs, labelFn, chartsArr) {
   )].sort((a, b) => a - b);
 
   // 각 로그 → dataset 3종
-  const line = { borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false, spanGaps: true };
+  const line = { borderWidth: 1.5, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false, spanGaps: true };
   const ttftDS = [], e2eDS = [], tpsDS = [];
 
   logs.forEach((log, i) => {
@@ -300,6 +380,18 @@ function renderThreeCharts(containerId, logs, labelFn, chartsArr) {
     new Chart(document.getElementById(`${containerId}-e2e`),  chartCfg(allUsers, e2eDS,  'Seconds')),
     new Chart(document.getElementById(`${containerId}-tps`),  chartCfg(allUsers, tpsDS,  'Tokens / sec')),
   );
+
+  // Add expand-on-click to each chart wrap
+  [
+    [`${containerId}-ttft`, 'TTFT (s)', 'Seconds',       ttftDS],
+    [`${containerId}-e2e`,  'E2E Time (s)', 'Seconds',   e2eDS],
+    [`${containerId}-tps`,  'TPS', 'Tokens / sec',       tpsDS],
+  ].forEach(([id, title, yLabel, ds]) => {
+    const wrap = document.getElementById(id)?.closest('.chart-wrap');
+    if (wrap) {
+      wrap.addEventListener('click', () => openChartModal(allUsers, ds, title, yLabel));
+    }
+  });
 }
 
 // 성능 저하율 테이블 렌더링
@@ -536,6 +628,7 @@ function drawRadar(scores) {
     pointRadius: 4,
   }));
 
+  const FONT = "'Barlow Condensed', 'Noto Sans KR', sans-serif";
   radarChartInst = new Chart(document.getElementById('radarChart'), {
     type: 'radar',
     data: {
@@ -549,13 +642,35 @@ function drawRadar(scores) {
         r: {
           min: 0, max: 100,
           ticks: { display: false, stepSize: 25 },
-          grid:        { color: '#21262d' },
-          angleLines:  { color: '#30363d' },
-          pointLabels: { color: '#8b949e', font: { size: 11 } },
+          grid:        { color: 'rgba(0,0,0,0.07)' },
+          angleLines:  { color: 'rgba(0,0,0,0.10)' },
+          pointLabels: {
+            color: '#7a8898',
+            font: { family: FONT, size: 12, weight: '700' },
+          },
         },
       },
       plugins: {
-        legend: { labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 14 } },
+        legend: {
+          labels: {
+            color: '#7a8898',
+            font: { family: FONT, size: 11, weight: '600' },
+            boxWidth: 20,
+            boxHeight: 2,
+            padding: 14,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#1a2233',
+          borderColor: '#2e3d52',
+          borderWidth: 1,
+          titleColor: '#c8d4e0',
+          bodyColor: '#8090a4',
+          titleFont: { family: FONT, size: 12, weight: '700' },
+          bodyFont: { family: FONT, size: 11 },
+          padding: 10,
+          cornerRadius: 4,
+        },
       },
     },
   });

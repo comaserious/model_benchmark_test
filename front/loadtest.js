@@ -206,7 +206,7 @@ function handleEvent(data, steps, labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsA
         card.className = 'user-card failed';
         card.innerHTML = `
           <div class="user-label">User ${data.user_id}</div>
-          <div style="color:#f85149;font-size:0.82rem;margin-top:4px;">Failed</div>`;
+          <div style="color:#dc2626;font-size:0.82rem;margin-top:4px;font-weight:600;">Failed</div>`;
       }
       break;
     }
@@ -250,7 +250,7 @@ function handleEvent(data, steps, labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsA
       stepProgressFill.style.width = '100%';
       stepIndicator.textContent = `완료 — ${steps.length}단계 테스트 종료`;
       chartsCard.classList.remove('hidden');
-      renderCharts(labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsAvg);
+      requestAnimationFrame(() => renderCharts(labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsAvg));
       break;
 
     case 'error':
@@ -260,26 +260,56 @@ function handleEvent(data, steps, labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsA
 }
 
 // ── Charts ───────────────────────────────────────────────────────────────────
+const FONT = "'Barlow Condensed', 'Noto Sans KR', sans-serif";
+
 function makeChartConfig(labels, datasets, yLabel) {
   return {
     type: 'line',
     data: { labels, datasets },
     options: {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 14 } },
+        legend: {
+          labels: {
+            color: '#7a8898',
+            font: { family: FONT, size: 11, weight: '600' },
+            boxWidth: 20,
+            boxHeight: 2,
+            padding: 14,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#1a2233',
+          borderColor: '#2e3d52',
+          borderWidth: 1,
+          titleColor: '#c8d4e0',
+          bodyColor: '#8090a4',
+          titleFont: { family: FONT, size: 12, weight: '700' },
+          bodyFont: { family: FONT, size: 11 },
+          padding: 10,
+          cornerRadius: 4,
+        },
       },
       scales: {
         x: {
-          title: { display: true, text: 'Concurrent Users', color: '#8b949e', font: { size: 11 } },
-          ticks: { color: '#8b949e' },
-          grid: { color: '#21262d' },
+          title: {
+            display: true, text: 'Concurrent Users',
+            color: '#96a2b0', font: { family: FONT, size: 10, weight: '700' },
+          },
+          ticks: { color: '#8090a4', font: { family: FONT, size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          border: { color: 'rgba(0,0,0,0.10)' },
         },
         y: {
-          title: { display: true, text: yLabel, color: '#8b949e', font: { size: 11 } },
-          ticks: { color: '#8b949e' },
-          grid: { color: '#21262d' },
+          title: {
+            display: true, text: yLabel,
+            color: '#96a2b0', font: { family: FONT, size: 10, weight: '700' },
+          },
+          ticks: { color: '#8090a4', font: { family: FONT, size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          border: { color: 'rgba(0,0,0,0.10)' },
           beginAtZero: true,
         },
       },
@@ -287,22 +317,80 @@ function makeChartConfig(labels, datasets, yLabel) {
   };
 }
 
+// ── Chart expand modal ────────────────────────────────────────────────────────
+function openChartModal(labels, datasets, title, yLabel) {
+  const cloned = JSON.parse(JSON.stringify(datasets));
+  const modal = document.createElement('div');
+  modal.className = 'chart-modal';
+  modal.innerHTML = `
+    <div class="chart-modal-backdrop"></div>
+    <div class="chart-modal-panel">
+      <div class="chart-modal-header">
+        <span class="chart-modal-title">${title}</span>
+        <button class="chart-modal-close" aria-label="닫기">✕</button>
+      </div>
+      <div class="chart-modal-canvas-wrap">
+        <canvas id="chart-modal-canvas"></canvas>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const cfg = makeChartConfig(labels, cloned, yLabel);
+  cfg.options.maintainAspectRatio = false;
+  cfg.options.plugins.legend.labels.font.size = 12;
+  cfg.options.scales.x.ticks.font.size = 12;
+  cfg.options.scales.y.ticks.font.size = 12;
+
+  const modalChart = new Chart(document.getElementById('chart-modal-canvas'), cfg);
+
+  const closeModal = () => {
+    modalChart.destroy();
+    modal.remove();
+    document.removeEventListener('keydown', onKeydown);
+  };
+  const onKeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+  modal.querySelector('.chart-modal-backdrop').addEventListener('click', closeModal);
+  modal.querySelector('.chart-modal-close').addEventListener('click', closeModal);
+  document.addEventListener('keydown', onKeydown);
+  requestAnimationFrame(() => modal.classList.add('open'));
+}
+
+function addExpandHandlers(chartDefs) {
+  chartDefs.forEach(([canvasId, title, yLabel, datasets, labels]) => {
+    const wrap = document.getElementById(canvasId)?.closest('.chart-wrap');
+    if (!wrap) return;
+    // Remove previous handler before adding new one (prevents stacking on repeated calls)
+    if (wrap._expandHandler) wrap.removeEventListener('click', wrap._expandHandler);
+    wrap._expandHandler = () => openChartModal(labels, datasets, title, yLabel);
+    wrap.addEventListener('click', wrap._expandHandler);
+  });
+}
+
 function renderCharts(labels, ttftAvg, ttftP95, e2eAvg, e2eP95, tpsAvg) {
-  const line = { borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false };
+  const line = { borderWidth: 1.5, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false };
 
-  ttftChart = new Chart(document.getElementById('ttftChart'), makeChartConfig(labels, [
-    { label: 'avg TTFT', data: ttftAvg, borderColor: '#58a6ff', pointBackgroundColor: '#58a6ff', ...line },
-    { label: 'p95 TTFT', data: ttftP95, borderColor: '#388bfd', borderDash: [4, 4], pointBackgroundColor: '#388bfd', ...line },
-  ], 'Seconds'));
+  const ttftDS = [
+    { label: 'avg TTFT', data: ttftAvg, borderColor: '#2563eb', pointBackgroundColor: '#2563eb', ...line },
+    { label: 'p95 TTFT', data: ttftP95, borderColor: '#3b82f6', borderDash: [4, 4], pointBackgroundColor: '#3b82f6', ...line },
+  ];
+  const e2eDS = [
+    { label: 'avg E2E', data: e2eAvg, borderColor: '#d97706', pointBackgroundColor: '#d97706', ...line },
+    { label: 'p95 E2E', data: e2eP95, borderColor: '#f59e0b', borderDash: [4, 4], pointBackgroundColor: '#f59e0b', ...line },
+  ];
+  const tpsDS = [
+    { label: 'avg TPS', data: tpsAvg, borderColor: '#16a34a', pointBackgroundColor: '#16a34a', ...line },
+  ];
 
-  e2eChart = new Chart(document.getElementById('e2eChart'), makeChartConfig(labels, [
-    { label: 'avg E2E', data: e2eAvg, borderColor: '#d29922', pointBackgroundColor: '#d29922', ...line },
-    { label: 'p95 E2E', data: e2eP95, borderColor: '#bb8009', borderDash: [4, 4], pointBackgroundColor: '#bb8009', ...line },
-  ], 'Seconds'));
+  ttftChart = new Chart(document.getElementById('ttftChart'), makeChartConfig(labels, ttftDS, 'Seconds'));
+  e2eChart  = new Chart(document.getElementById('e2eChart'),  makeChartConfig(labels, e2eDS,  'Seconds'));
+  tpsChart  = new Chart(document.getElementById('tpsChart'),  makeChartConfig(labels, tpsDS,  'Tokens / sec'));
+  ttftChart.resize(); e2eChart.resize(); tpsChart.resize();
 
-  tpsChart = new Chart(document.getElementById('tpsChart'), makeChartConfig(labels, [
-    { label: 'avg TPS', data: tpsAvg, borderColor: '#3fb950', pointBackgroundColor: '#3fb950', ...line },
-  ], 'Tokens / sec'));
+  addExpandHandlers([
+    ['ttftChart', 'TTFT (s)',      'Seconds',       ttftDS, labels],
+    ['e2eChart',  'E2E Time (s)',  'Seconds',       e2eDS,  labels],
+    ['tpsChart',  'TPS',           'Tokens / sec',  tpsDS,  labels],
+  ]);
 }
 
 // ── History ──────────────────────────────────────────────────────────────────
@@ -322,7 +410,7 @@ function renderHistory(logs) {
       <table id="historyTable">
         <thead>
           <tr>
-            <th>날짜</th>
+            <!-- <th>날짜</th> -->
             <th>GPU</th>
             <th>수량</th>
             <th>모델</th>
@@ -337,7 +425,7 @@ function renderHistory(logs) {
             const date = m.date ? m.date.replace('T', ' ').substring(0, 16) : '—';
             const gpuCount = m.gpu_count || 1;
             return `<tr class="history-row" data-idx="${i}" style="cursor:pointer;">
-              <td>${date}</td>
+              <!-- <td>${date}</td> -->
               <td>${m.gpu}</td>
               <td>${gpuCount}개</td>
               <td>${(m.model || '').split('/').pop()}</td>
@@ -395,21 +483,34 @@ function showHistoryDetail(log) {
   }
 
   if (histTtftChart) { histTtftChart.destroy(); histTtftChart = null; }
-  if (histE2eChart) { histE2eChart.destroy(); histE2eChart = null; }
-  if (histTpsChart) { histTpsChart.destroy(); histTpsChart = null; }
+  if (histE2eChart)  { histE2eChart.destroy();  histE2eChart  = null; }
+  if (histTpsChart)  { histTpsChart.destroy();  histTpsChart  = null; }
 
-  const line = { borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false };
-  histTtftChart = new Chart(document.getElementById('histTtftChart'), makeChartConfig(labels, [
-    { label: 'avg TTFT', data: ttftAvg, borderColor: '#58a6ff', pointBackgroundColor: '#58a6ff', ...line },
-    { label: 'p95 TTFT', data: ttftP95, borderColor: '#388bfd', borderDash: [4, 4], pointBackgroundColor: '#388bfd', ...line },
-  ], 'Seconds'));
-  histE2eChart = new Chart(document.getElementById('histE2eChart'), makeChartConfig(labels, [
-    { label: 'avg E2E', data: e2eAvg, borderColor: '#d29922', pointBackgroundColor: '#d29922', ...line },
-    { label: 'p95 E2E', data: e2eP95, borderColor: '#bb8009', borderDash: [4, 4], pointBackgroundColor: '#bb8009', ...line },
-  ], 'Seconds'));
-  histTpsChart = new Chart(document.getElementById('histTpsChart'), makeChartConfig(labels, [
-    { label: 'avg TPS', data: tpsAvg, borderColor: '#3fb950', pointBackgroundColor: '#3fb950', ...line },
-  ], 'Tokens / sec'));
+  const line = { borderWidth: 1.5, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false };
+  const histTtftDS = [
+    { label: 'avg TTFT', data: ttftAvg, borderColor: '#2563eb', pointBackgroundColor: '#2563eb', ...line },
+    { label: 'p95 TTFT', data: ttftP95, borderColor: '#3b82f6', borderDash: [4, 4], pointBackgroundColor: '#3b82f6', ...line },
+  ];
+  const histE2eDS = [
+    { label: 'avg E2E', data: e2eAvg, borderColor: '#d97706', pointBackgroundColor: '#d97706', ...line },
+    { label: 'p95 E2E', data: e2eP95, borderColor: '#f59e0b', borderDash: [4, 4], pointBackgroundColor: '#f59e0b', ...line },
+  ];
+  const histTpsDS = [
+    { label: 'avg TPS', data: tpsAvg, borderColor: '#16a34a', pointBackgroundColor: '#16a34a', ...line },
+  ];
+
+  requestAnimationFrame(() => {
+    histTtftChart = new Chart(document.getElementById('histTtftChart'), makeChartConfig(labels, histTtftDS, 'Seconds'));
+    histE2eChart  = new Chart(document.getElementById('histE2eChart'),  makeChartConfig(labels, histE2eDS,  'Seconds'));
+    histTpsChart  = new Chart(document.getElementById('histTpsChart'),  makeChartConfig(labels, histTpsDS,  'Tokens / sec'));
+    histTtftChart.resize(); histE2eChart.resize(); histTpsChart.resize();
+
+    addExpandHandlers([
+      ['histTtftChart', 'TTFT (s)',     'Seconds',      histTtftDS, labels],
+      ['histE2eChart',  'E2E Time (s)', 'Seconds',      histE2eDS,  labels],
+      ['histTpsChart',  'TPS',          'Tokens / sec', histTpsDS,  labels],
+    ]);
+  });
 
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -480,12 +581,12 @@ function calcGpuRow(log, targetUsers, maxTtft, maxE2e) {
 
 function appendBudgetRow(row, label) {
   const neededCell = row.neededGpus !== null
-    ? `<strong>${row.neededGpus}</strong>`
-    : '<span style="color:#f85149">데이터 부족</span>';
+    ? `<strong style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;">${row.neededGpus}</strong>`
+    : '<span style="color:#dc2626;font-size:0.82rem;">데이터 부족</span>';
   const ttftCell = row.avgTtft !== null ? `${row.avgTtft.toFixed(3)}s` : '—';
   const e2eCell = row.avgE2e !== null ? `${row.avgE2e.toFixed(3)}s` : '—';
   const maxUsersCell = row.maxUsersPerGpu > 0
-    ? `${row.maxUsersPerGpu} <span style="color:#8b949e;font-size:0.8em;">(테스트: ${row.gpuCount}개)</span>`
+    ? `${row.maxUsersPerGpu} <span style="color:#8090a4;font-size:0.8em;">(테스트: ${row.gpuCount}개)</span>`
     : '—';
 
   const tr = document.createElement('tr');
