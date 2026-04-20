@@ -213,6 +213,11 @@ body {
   padding-right: 28px;
 }
 
+.form-group select option {
+  background: #1a2133;
+  color: #e1e4e8;
+}
+
 .form-group input:focus,
 .form-group select:focus {
   border-color: var(--c-accent);
