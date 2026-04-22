@@ -34,7 +34,7 @@ def benchmark_streaming(url: str, model: str, prompt: str, max_tokens: int = 256
         "stream": True,
     }
 
-    if "Qwen" in model:
+    if "Qwen" in model or "zai" in model or "Xiaomi":
         payload['chat_template_kwargs'] = {"enable_thinking" : False}
 
     req_headers = {"Content-Type": "application/json"}
